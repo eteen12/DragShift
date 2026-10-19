@@ -36,6 +36,10 @@ EXTENSION_DIR = Path(__file__).resolve().with_name("ext") / UUID
 BUS_NAME = "io.github.eteen12.DragShiftTest"
 OBJECT_PATH = "/io/github/eteen12/DragShiftTest"
 INTERFACE = "io.github.eteen12.DragShiftTest"
+READY_TIMEOUT = 30.0  # seconds for wait_ready (the extension normally answers within 1 s)
+# org.gnome.Shell.Extensions extension states (js/misc/extensionUtils.js) that never
+# become ready by themselves: ERROR, OUT_OF_DATE.
+FAILED_STATES = {3, 4}
 
 # D-Bus input signature of every method the client calls.
 SIGNATURES = {
@@ -93,8 +97,12 @@ class ShellHelper:
     # ------------------------------------------------------------------ raw call
     def call(self, method: str, *args, timeout: float | None = None) -> list:
         """Call a helper method; returns its out arguments as a list."""
-        request = {"method": method, "signature": SIGNATURES[method], "args": list(args),
-                   "timeout_ms": int((timeout or self.timeout) * 1000)}
+        return self._request({"method": method, "signature": SIGNATURES[method],
+                              "args": list(args),
+                              "timeout_ms": int((timeout or self.timeout) * 1000)})
+
+    def _request(self, request: dict) -> list:
+        method = request.get("method") or request.get("op")
         try:
             self._bridge.stdin.write(json.dumps(request) + "\n")
             self._bridge.stdin.flush()
@@ -114,19 +122,41 @@ class ShellHelper:
     def version(self) -> str:
         return self.call("Version")[0]
 
-    def wait_ready(self, timeout: float = 15.0) -> str:
-        """Wait until the extension answers Version. On failure the error carries the
+    def wait_for_name(self, timeout: float) -> bool:
+        """Whether the helper's bus name is owned within `timeout` s. Event-driven: the
+        bridge watches the name (NameOwnerChanged) instead of polling."""
+        return bool(self._request({"op": "wait_name", "name": BUS_NAME,
+                                   "timeout_ms": int(timeout * 1000)})[0])
+
+    def extension_state(self) -> int | None:
+        """The shell's state for the helper extension (1 enabled, 3 error, 4 out of date,
+        6 initialized, ...), or None if the shell does not know it (yet)."""
+        try:
+            info = self._request({
+                "dest": "org.gnome.Shell", "path": "/org/gnome/Shell",
+                "interface": "org.gnome.Shell.Extensions", "method": "GetExtensionInfo",
+                "signature": "(s)", "args": [UUID], "timeout_ms": 5000})[0]
+        except HelperError:
+            return None
+        return int(info["state"]) if "state" in info else None
+
+    def wait_ready(self, timeout: float = READY_TIMEOUT) -> str:
+        """Wait until the extension owns its bus name and answers Version. It takes the
+        name only once the shell's startup is done and the overview is closed (#17).
+        Fails early when the extension is in ERROR state; the error carries the
         extension's state and the shell log tail (a syntax error shows up there)."""
         deadline = time.monotonic() + timeout
+        last: Exception | str = f"{BUS_NAME} never appeared on the session bus"
         while True:
             try:
-                return self.call("Version", timeout=1)[0]
+                if self.wait_for_name(max(0.1, min(1.0, deadline - time.monotonic()))):
+                    return self.call("Version", timeout=5)[0]
             except HelperError as e:
                 last = e
-            info = self.session.run(["gnome-extensions", "info", UUID]).stdout.strip()
-            if "State: ERROR" in info or time.monotonic() > deadline:
+            if (self._bridge.poll() is not None or time.monotonic() > deadline
+                    or self.extension_state() in FAILED_STATES):
                 break
-            time.sleep(0.2)
+        info = self.session.run(["gnome-extensions", "info", UUID]).stdout.strip()
         try:  # the extension's own errors may already have scrolled out of the tail
             log = self.session.log_path.read_text(errors="replace").splitlines()
         except OSError:
@@ -238,6 +268,32 @@ class ShellHelper:
         self.call("ReleaseAll")
 
 
+def _wait_name(bus, name: str, timeout_ms: int) -> str:
+    """The owner of `name` once it is owned, or "" after timeout_ms (bridge side)."""
+    from gi.repository import Gio, GLib
+
+    loop, owner = GLib.MainLoop(), []
+
+    def appeared(_conn, _name, name_owner):
+        owner.append(name_owner)
+        loop.quit()
+
+    def expired():
+        loop.quit()
+        timer.clear()
+        return GLib.SOURCE_REMOVE
+
+    watch = Gio.bus_watch_name_on_connection(bus, name, Gio.BusNameWatcherFlags.NONE,
+                                             appeared, None)
+    timer = [GLib.timeout_add(timeout_ms, expired)]
+    if not owner:
+        loop.run()
+    Gio.bus_unwatch_name(watch)
+    if timer:
+        GLib.source_remove(timer[0])
+    return owner[0] if owner else ""
+
+
 def _bridge() -> int:
     """JSON-lines bridge to the helper over the session bus (system python with gi)."""
     from gi.repository import Gio, GLib
@@ -246,9 +302,15 @@ def _bridge() -> int:
     for line in sys.stdin:
         req = json.loads(line)
         try:
+            if req.get("op") == "wait_name":
+                out = {"result": [_wait_name(bus, req["name"], req["timeout_ms"])]}
+                sys.stdout.write(json.dumps(out) + "\n")
+                sys.stdout.flush()
+                continue
             params = (GLib.Variant(req["signature"], tuple(req["args"]))
                       if req["signature"] else None)
-            reply = bus.call_sync(BUS_NAME, OBJECT_PATH, INTERFACE, req["method"], params,
+            reply = bus.call_sync(req.get("dest", BUS_NAME), req.get("path", OBJECT_PATH),
+                                  req.get("interface", INTERFACE), req["method"], params,
                                   None, Gio.DBusCallFlags.NONE, req["timeout_ms"], None)
             out = {"result": list(reply.unpack())}
         except GLib.Error as e:

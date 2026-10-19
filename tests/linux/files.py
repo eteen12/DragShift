@@ -45,14 +45,17 @@ venv, so the module level only uses the standard library.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import locale
+import mimetypes
 import logging
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 log = logging.getLogger("tests.linux.files")
 
@@ -62,6 +65,7 @@ NAUTILUS_WM_CLASS = "org.gnome.Nautilus"
 # right edge of a 1600x900 session and of the dock on the left.
 NAUTILUS_RECT = (90, 150, 760, 560)
 MAP_SETTLE = 0.6           # s after a window appears before it is moved (map animation)
+THUMBNAIL_TIMEOUT = 30.0   # s for Nautilus to thumbnail the images of an opened folder
 # An app registers on the accessibility bus a moment after it starts (DING restarts when
 # its desktop folder appears); only after this long without a tree is it taken as an app
 # that exports none, and the fallback is used.
@@ -179,6 +183,7 @@ class Files:
         """Open `folder` in a new Nautilus window, move it to `rect` (x, y, w, h) and
         focus it. view: "icon" (Nautilus' default grid) or "list"; None picks "icon"
         when AT-SPI is available and "list" (needed by the fallback) otherwise.
+        In icon view it also waits until the folder's images are thumbnailed (#106).
         Returns the ListWindows record of the window."""
         folder = Path(folder).resolve()
         if view is None:
@@ -211,7 +216,31 @@ class Files:
         self.windows[folder] = win
         self.views[folder] = view
         self._last_folder = folder
+        if view == "icon":
+            self.wait_for_thumbnails(folder)
         return win
+
+    def wait_for_thumbnails(self, folder, timeout: float = THUMBNAIL_TIMEOUT) -> bool:
+        """Wait until every image in `folder` has a thumbnail (or a failure record) in the
+        session's thumbnail cache. Nautilus shows a placeholder until its thumbnailer has
+        run, which takes seconds under load, and the placeholder looks settled: a
+        screenshot taken then differs from one taken later (#106). Logs a warning and
+        returns False on timeout."""
+        cache = Path(self.session.env()["XDG_CACHE_HOME"]) / "thumbnails"
+        images = [p for p in Path(folder).iterdir()
+                  if (mimetypes.guess_type(p.name)[0] or "").startswith("image/")]
+        names = {p: hashlib.md5(_glib_uri(p).encode()).hexdigest() + ".png" for p in images}
+        deadline = time.monotonic() + timeout
+        while True:
+            missing = [p for p, n in names.items()
+                       if not any(cache.glob(f"*/{n}")) and not any(cache.glob(f"fail/*/{n}"))]
+            if not missing:
+                return True
+            if time.monotonic() > deadline:
+                log.warning("no thumbnails after %.0f s for %s", timeout,
+                            [p.name for p in missing])
+                return False
+            time.sleep(0.1)
 
     def _set_viewer(self, viewer: str) -> None:
         key = ("org.gnome.nautilus.preferences", "default-folder-viewer")
@@ -374,6 +403,12 @@ class Files:
         above = [w for w in inside if w["stacking"] > stacking.get(mine, -1)]
         if above:
             raise FilesError(f"icon at {point} is covered by {_titles(above)}")
+
+
+def _glib_uri(path: Path) -> str:
+    """The file:// URI as g_filename_to_uri() spells it (the thumbnail cache key): it
+    leaves !$&'()*+,:=@ unescaped, which Path.as_uri() escapes."""
+    return "file://" + quote(str(Path(path).resolve()), safe="/!$&'()*+,:=@")
 
 
 def _write(folder: Path, files: dict) -> list[Path]:

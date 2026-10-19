@@ -89,6 +89,14 @@ environment for child processes, `gnome_session.run(cmd)` and `gnome_session.pop
 run inside the session, and `gnome_session.log_path` is the shell's log.
 `Session(extensions=[dir])` installs and enables extra extensions.
 
+`start()` returns once the shell has finished starting up: it answers `ShellVersion`
+and has logged `GNOME Shell started at …` (its `startup-complete`). Then it waits for
+the helper (`helper=True`) and only then applies `scale`. GNOME Shell answers on D-Bus
+before its startup animation, and a monitor change in that gap wedges its startup for good,
+so the overview stays up and the helper never gets ready (#106). Change the monitors only
+after `start()`. A start that stalls fails within the timeout (60 s), and the error
+carries the shell log tail.
+
 The session never touches your real desktop:
 - It uses its own HOME, XDG directories, `TMPDIR`, `XDG_RUNTIME_DIR` (`/tmp/dsr.*`),
   session bus and an empty private system bus.
@@ -119,7 +127,9 @@ bus and offers `Version`, `Screenshot(path)`, `ScreenshotArea(x, y, w, h, path)`
   `python3-gi`, inside the session environment) and exchanges JSON lines with it.
 - Screenshots are only written inside the session root (`/tmp/dragshift-session-*`); by
   default they go to `<root>/tmp/screenshot-N.png`. Copy one out before the session stops.
-- `Session(helper=True)` waits until the helper answers. If it fails to load (say, a
+- `Session(helper=True)` waits until the helper owns its bus name and answers (the
+  bridge watches the name, so there is no polling). The helper logs its steps to the shell
+  log as `dragshift-test@eteen12.github.io: …`. If it fails to load (say, a
   syntax error), `start()` raises `HelperError` with the extension state, the shell log
   lines that name it and the shell log tail.
 
@@ -143,7 +153,9 @@ and runs from a launcher session root (`/tmp/dragshift-session-*`).
   `drag_to(shell, x, y, start=..., hold="Shift_L")`, `type_text` and `release_all`. Keys
   are X keysym names (`Shift_L`, `Control_L`, `Alt_L`, `Escape`, `Return`) or characters.
 - Each call returns after the shell has handled its events, so a key release can never
-  overtake the move sent before it.
+  overtake the move sent before it. It also waits until the seat's modifier mask shows the
+  Shift, Control and Alt keys and the buttons held, so the next reader never sees a
+  released key as still down.
 - `TypeText` types only characters that the session's keymap has. The session uses the
   default `us` layout, which covers ASCII.
 - Do not use uinput, `ydotool` or `xdotool` instead: those drive the real seat.
