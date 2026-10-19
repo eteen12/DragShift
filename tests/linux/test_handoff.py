@@ -52,6 +52,10 @@ CHOOSER = "Open File"           # Nautilus 46's Open With… dialog
 # Its GTK 4 menu items have no accessible names, so the item is found by position;
 # the chooser dialog appearing proves it was the right one.
 OPEN_WITH_ITEM = 2
+# The chooser's list at 100 %, from its frame's top (Nautilus 46.4): the "Default App" row,
+# then the first "Recommended Apps" row, which is DragShift (GIO lists XDG_DATA_HOME's
+# entries first), and a point right of the names where a selected row is tinted.
+DEFAULT_ROW, FIRST_RECOMMENDED, TINT_X = 151, 227, -48
 
 # Runs with the system python (gi): activates the n-th item of Nautilus' open menu.
 MENU_ITEM = r"""
@@ -131,10 +135,16 @@ def env(built_dir):  # noqa: F811
         icons.mkdir(parents=True)
         with Image.open(ROOT / "dragshift" / "assets" / "dragshift.png") as im:
             im.resize((256, 256)).save(icons / f"{dsapp.LINUX_APP_ID}.png")
+        # GIO matches MIME types through mimeinfo.cache: without it nothing lists DragShift
+        r = s.run(["update-desktop-database", str(data / "applications")])
+        assert r.returncode == 0, r.stderr
         inside = InSession(s, f"{bindir}:{e['PATH']}")
         # Files may be started by D-Bus activation: give that the same PATH
         r = s.run(["dbus-update-activation-environment", f"PATH={inside.path}"])
         assert r.returncode == 0, r.stderr
+        # DING may have D-Bus-activated Nautilus during boot, with the old PATH and before
+        # mimeinfo.cache existed. Quit it: the next one starts with both, as after a login.
+        s.run(["nautilus", "-q"], timeout=30)
         conf = Path(e["XDG_CONFIG_HOME"]) / "DragShift" / "DragShift.conf"
         conf.parent.mkdir(parents=True, exist_ok=True)
         conf.write_text("[General]\nwelcomed=true\n")   # no Welcome window over the menu
@@ -234,16 +244,21 @@ def close_menu(env) -> None:
         time.sleep(0.02)
 
 
-def shot(env, name: str) -> None:
+def shot(env, name: str) -> Path:
     p = env.shell.screenshot(env.session.root / "tmp" / f"{name}.png")
     _evidence(f"{name}.png", p)
+    return p
+
+
+def _tinted(rgb) -> bool:
+    """The chooser's selected-row tint (249, 212, 199), not the list's white."""
+    return rgb[0] > 230 and rgb[2] < 225
 
 
 # ------------------------------------------------------------------ the desktop entry
 def test_files_recommends_dragshift_for_every_type(env):
+    """The env fixture ran update-desktop-database in the session's XDG_DATA_HOME."""
     apps = env.data / "applications"
-    r = env.inside.run(["update-desktop-database", str(apps)])
-    assert r.returncode == 0, r.stderr
     cache = (apps / "mimeinfo.cache").read_text()
     for mime in sorted(set(MIME.values())):
         assert f"{mime}=" in cache and DESKTOP_ID in cache
@@ -330,13 +345,22 @@ def open_with_dragshift(env, files: Files, folder: Path, tag: str) -> float:
             break
         assert time.monotonic() < deadline, "no Open With dialog"
         time.sleep(0.05)
-    time.sleep(0.8)
+    time.sleep(1.5)
     x, y, w, h = dlg["frame"]
-    inject.click(env.shell, x + w // 2, y + h // 2)     # into the app list
+    # Click the default app's row (already selected, so harmless) to focus the list,
+    # then type: the list's type-ahead search selects DragShift.
+    inject.click(env.shell, x + w // 2, y + DEFAULT_ROW)
     time.sleep(0.4)
-    inject.type_text(env.shell, "DragShift")            # the list's type-ahead search
+    inject.type_text(env.shell, "DragShift")
     time.sleep(0.8)
-    shot(env, f"open-with-{tag}-2-chooser")
+    with Image.open(shot(env, f"open-with-{tag}-2-chooser")) as im:
+        default, ours = (im.convert("RGB").getpixel((x + w + TINT_X, y + row))
+                         for row in (DEFAULT_ROW, FIRST_RECOMMENDED))
+    if not _tinted(ours) or _tinted(default):   # never open the files with another app
+        inject.press(env.shell, "Escape")
+        inject.press(env.shell, "Escape")
+        pytest.fail(f"DragShift is not the selected row (tints {default}, {ours}); "
+                    f"see open-with-{tag}-2-chooser.png")
     pressed = time.monotonic()
     inject.press(env.shell, "Return")                   # = Open
     return pressed
