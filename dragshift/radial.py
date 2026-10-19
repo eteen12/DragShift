@@ -236,12 +236,11 @@ class RadialMenu(QWidget):
         """Where the menu may go on GNOME: Mutter keeps windows out of the top bar and a
         fixed dock (a menu asked for at y = 0 lands at y = 32), and Qt has no work area
         under Wayland, so the work area of the pointer's monitor comes from the shell
-        extension (`platform_linux.work_area`, #42). Clamping to it keeps the frame, and
+        extension (`platform_linux.work_area`). Clamping to it keeps the frame, and
         the backdrop captured for it, where popup() computed them. The monitor when the
         extension can't tell."""
         from . import platform_linux
-        work_area = getattr(platform_linux, "work_area", None)   # added by #42
-        wa = work_area(pos.x(), pos.y()) if work_area else None
+        wa = platform_linux.work_area(pos.x(), pos.y())
         return QRect(*wa) if wa else monitor
 
     def _linux_place(self, tl: QPoint):

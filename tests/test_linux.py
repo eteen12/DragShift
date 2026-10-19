@@ -277,6 +277,7 @@ def placing(qapp, lx, monkeypatch):
 
     monkeypatch.setattr(lx, "capture", capture)
     monkeypatch.setattr(lx, "place_window", place_window)
+    monkeypatch.setattr(lx, "work_area", lambda x, y: None)     # tests below set one
     rec.menu = radial.RadialMenu(lambda p: {}, lambda p: "")
     yield rec
     from PySide6.QtCore import QThreadPool
@@ -315,8 +316,7 @@ def test_menu_is_kept_in_the_shells_work_area(placing, lx, monkeypatch):
     from PySide6.QtCore import QPoint
     from dragshift import radial
     asked = []
-    monkeypatch.setattr(lx, "work_area", lambda x, y: asked.append((x, y)) or (66, 32, 700, 560),
-                        raising=False)
+    monkeypatch.setattr(lx, "work_area", lambda x, y: asked.append((x, y)) or (66, 32, 700, 560))
     placing.menu.popup(QPoint(5, 5))
     assert asked == [(5, 5)]
     assert placing.places[-1] == (radial.MENU_TITLE, 66, 32, False)

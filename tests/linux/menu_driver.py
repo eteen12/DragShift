@@ -68,12 +68,10 @@ def main(argv=None) -> int:
     qapp = QApplication([sys.argv[0], *(["-platform", qpa] if qpa else [])])
     app.linux_setup(qapp)
     menu = RadialMenu(lambda paths: {}, lambda paths: "")
-    work_area = getattr(platform_linux, "work_area", None)     # #42; None before it lands
     screens = [s.geometry() for s in qapp.screens()]
     write(type="ready", pid=os.getpid(), platform=qapp.platformName(),
           screens=[list(g.getRect()) for g in screens],
-          areas=[work_area(g.center().x(), g.center().y()) if work_area else None
-                 for g in screens])
+          areas=[platform_linux.work_area(g.center().x(), g.center().y()) for g in screens])
     shots = Path(a.log).with_suffix("")
     n = 0
 

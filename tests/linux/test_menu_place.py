@@ -53,8 +53,10 @@ def _evidence(name: str, data=None, path: Path | None = None) -> None:
 
 
 def expected_tl(x: int, y: int, monitor=MONITOR) -> tuple[int, int]:
-    """Where the menu centred on (x, y) must land: kept on the monitor under the pointer,
-    exactly as radial.py clamps on Windows (QRect.right() = x + width - 1)."""
+    """Where the menu centred on (x, y) must land: kept inside `monitor` (the work area
+    of the pointer's monitor; the default is the whole first monitor, which gives the same
+    result away from the top bar and the dock), with radial.py's arithmetic
+    (QRect.right() = x + width - 1)."""
     mx, my, mw, mh = monitor
     return (min(max(x - SIZE // 2, mx), mx + mw - 1 - SIZE),
             min(max(y - SIZE // 2, my), my + mh - 1 - SIZE))
@@ -83,21 +85,18 @@ def driver(session, shell):  # noqa: F811
                          ids=["300,300", "1590,890", "top-edge", "left-edge"])
 def test_menu_opens_at_the_pointer_clamped_to_the_monitor(session, shell, files_window,  # noqa: F811
                                                           driver, at):
-    """The frame is the rect centred on the pointer, moved onto the monitor at its edges,
-    ±2 px; it is above the other windows and Files keeps the focus. The extension placed
+    """The frame is the rect centred on the pointer, moved into the monitor's work area
+    (out of the top bar and the dock) at its edges, ±2 px; it is above the other windows and Files keeps the focus. The extension placed
     it before it mapped (PlaceWindow by the menu's title, reply False: not mapped yet)."""
     monitor, area = driver.area(*at)
-    tl = expected_tl(*at, monitor=area or monitor)
+    assert area is not None                 # the extension's GetWorkArea answers
+    tl = expected_tl(*at, monitor=area)
     rows = []
     for _ in range(2):                   # first show and a re-show of the same window
         shown = driver.popup(*at)
         w = driver.window()
         rows.append(dict(at=at, expected=tl, work_area=area, frame=shown["frame"],
                          places=shown["places"], above=w["above"], focused=_focused(shell)))
-        if area is None and not _near(shown["frame"], tl):
-            pytest.xfail(f"Mutter keeps windows out of the top bar and the dock: frame "
-                         f"{shown['frame']} for {tl}. radial.py clamps to the work area once "
-                         "#42 adds platform_linux.work_area.")
         assert _near(shown["frame"], tl), rows[-1]
         assert _inside(shown["frame"])
         assert shown["places"] == [[MENU_TITLE, *tl, False]]
