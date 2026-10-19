@@ -13,8 +13,10 @@ from pathlib import Path
 import pytest
 
 from tests.linux.conftest import REAL_ENV, require_session_tools
-from tests.linux.session import (MARKER, Session, SessionError, _pids_with_runtime_dir,
-                                 reap_stale_sessions)
+from tests.linux import session as session_mod
+from tests.linux.session import (MARKER, SYSTEM_EXTENSIONS, UBUNTU_DEFAULT_EXTENSIONS, Session,
+                                 SessionError, _pids_with_runtime_dir, reap_stale_sessions,
+                                 ubuntu_mode)
 
 ROOT = Path(__file__).resolve().parents[2]
 SYSTEM_DING = "gjs /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/ding.js"
@@ -117,6 +119,18 @@ def test_extensions_list_contains_ding_from_private_copy(gnome_session):
     assert "ding@rastersoft.com" in r.stdout.split()
     info = s.run(["gnome-extensions", "info", "ding@rastersoft.com"], check=True).stdout
     assert f"Path: {s.root}/share/gnome-shell/extensions/ding@rastersoft.com" in info
+
+
+@gnome
+def test_ubuntu_default_extensions_active(gnome_session):
+    """Dock, appindicators and DING run as on the host, with or without --mode=ubuntu."""
+    s = gnome_session
+    installed = [u for u in UBUNTU_DEFAULT_EXTENSIONS if (SYSTEM_EXTENSIONS / u).is_dir()]
+    assert "ding@rastersoft.com" in installed
+    for uuid in installed:
+        info = _wait_for(lambda: "ACTIVE" in (r := s.run(
+            ["gnome-extensions", "info", uuid])).stdout and r.stdout)
+        assert info, f"{uuid} is not active in mode {s.mode!r}"
 
 
 @gnome
@@ -240,3 +254,16 @@ def test_reap_stale_sessions_only_touches_dead_owners(tmp_path):
     assert reap_stale_sessions(str(tmp_path)) == [str(dead)]
     assert not dead.exists() and not dead_root.exists()
     assert alive.exists() and foreign.exists()
+
+
+def test_ubuntu_mode_needs_mode_file_and_theme(tmp_path, monkeypatch):
+    mode = tmp_path / "modes" / "ubuntu.json"
+    monkeypatch.setattr(session_mod, "UBUNTU_MODE", mode)
+    assert not ubuntu_mode()                       # no mode file (other distros)
+    mode.parent.mkdir()
+    mode.write_text(json.dumps({"themeResourceName": "theme/Yaru/gnome-shell-theme.gresource"}))
+    assert not ubuntu_mode()                       # mode file without the Yaru shell theme
+    theme = tmp_path / "theme" / "Yaru" / "gnome-shell-theme.gresource"
+    theme.parent.mkdir(parents=True)
+    theme.write_bytes(b"")
+    assert ubuntu_mode()
