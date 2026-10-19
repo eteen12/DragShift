@@ -104,8 +104,8 @@ GNOME 46 refuses `org.gnome.Shell.Screenshot` to callers that are not allowliste
 tests use a test-only extension, `dragshift-test@eteen12.github.io`
 (`tests/linux/ext/`). It owns `io.github.eteen12.DragShiftTest` on the session's private
 bus and offers `Version`, `Screenshot(path)`, `ScreenshotArea(x, y, w, h, path)`,
-`ListWindows`, `ActivateWindow(id)`, `MoveWindow(id, x, y, w, h)`, `GetPointer` and the
-input methods below.
+`ListWindows`, `ActivateWindow(id)`, `MoveWindow(id, x, y, w, h)`, `GetPointer`,
+`GetWorkArea(x, y)` (monitor and Mutter's work area there) and the input methods below.
 
 - `Session(helper=True)` (CLI: `--helper`) copies it into the session's temporary
   `XDG_DATA_HOME` and enables it. The shared `gnome_session` fixture always does this.
@@ -287,6 +287,13 @@ on the session bus, and its interface is in `dbus.xml`. `dragshift/platform_linu
 the Python client (`jeepney`, 200 ms timeout, `None` when the extension doesn't answer).
 `PlaceWindow` (in `placement.js`, client `platform_linux.place_window`) places, raises and
 un-focuses the caller's own windows, since a Wayland client can't do that itself.
+`GetWorkArea(x, y)` (client `platform_linux.work_area`) returns the work area (monitor
+minus the top bar and a fixed dock) of the monitor at a point. Under Wayland Qt's
+`availableGeometry()` is the whole monitor, so toasts stack inside this instead (#42):
+
+```sh
+uv run pytest -s tests/test_toast_stack.py tests/linux/test_toasts.py   # scale 1 and 2, two monitors
+```
 
 ```sh
 extension/build.sh                 # → dist/dragshift@eteen12.github.io.shell-extension.zip

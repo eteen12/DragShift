@@ -46,6 +46,7 @@ SIGNATURES = {
     "ActivateWindow": "(t)",
     "MoveWindow": "(tiiii)",
     "GetPointer": "",
+    "GetWorkArea": "(ii)",
     "MovePointer": "(ii)",
     "Button": "(ub)",
     "Key": "(ub)",
@@ -202,6 +203,12 @@ class ShellHelper:
             if (frame == want and stable >= 2) or time.monotonic() > deadline:
                 return frame
             time.sleep(0.05)
+
+    def work_area(self, x: int, y: int) -> tuple[tuple, tuple]:
+        """(monitor, work area) as (x, y, w, h) each, for the monitor that contains
+        (x, y) (else the primary one), from Mutter's active workspace."""
+        monitor, area = self.call("GetWorkArea", int(x), int(y))
+        return tuple(monitor), tuple(area)
 
     def get_pointer(self) -> tuple[int, int, int]:
         """(x, y, Clutter modifier mask) from global.get_pointer()."""

@@ -11,8 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import (QEasingCurve, QFile, QPointF, QRect, QRectF, Qt, QTimer, QUrl,
-                            QVariantAnimation, Signal)
+from PySide6.QtCore import (QEasingCurve, QFile, QPoint, QPointF, QRect, QRectF, Qt, QTimer,
+                            QUrl, QVariantAnimation, Signal)
 from PySide6.QtGui import (QColor, QCursor, QDesktopServices, QFont, QFontMetrics,
                            QGuiApplication, QPainter, QPainterPath, QPen, QPixmap)
 from PySide6.QtWidgets import QWidget
@@ -23,6 +23,15 @@ from .report import Result
 W, H = 380, 104
 GAP = 10
 MARGIN = 18
+MAX_CARDS = 4
+
+IS_LINUX = sys.platform.startswith("linux")
+# Linux (#42): DragShift is a native Wayland client there (docs/linux/display-backend.md),
+# which can neither place nor raise its own windows, fade them (no window opacity) or
+# learn the work area. The shell extension does the first two by window title and tells
+# the work area; the card fades by painting. Each live card holds one of these titles.
+TITLE = "DragShift toast {}"
+SLIDE_MS = 180     # a card moving to its new slot after another one closed
 
 
 def reveal(path: str | Path):
@@ -107,6 +116,14 @@ class ToastCard(QWidget):
         self.fade.valueChanged.connect(self._set_fade)
         self.spinner = QTimer(self, interval=16, timeout=self._spin)
         self.life = QTimer(self, singleShot=True, timeout=self.dismiss)
+        if IS_LINUX:
+            self.number = 0             # n of the window title "DragShift toast n"
+            self._at = QPoint()         # top-left the extension was last asked for
+            self._target = QRect()      # slot the card is in or sliding to
+            self.slide = QVariantAnimation(self, duration=SLIDE_MS,
+                                           easingCurve=QEasingCurve.OutCubic)
+            self.slide.valueChanged.connect(self._place)
+            self.slide.finished.connect(self._slid)
 
     # ------------------------------------------------------------ state
     def working(self, title: str, detail: str = ""):
@@ -144,18 +161,53 @@ class ToastCard(QWidget):
 
     def _set_fade(self, v):
         self._fade = float(v)
-        self.setWindowOpacity(self._fade)
+        if not IS_LINUX:            # Linux: Wayland has no window opacity, paintEvent fades
+            self.setWindowOpacity(self._fade)
         self.update()
 
     def appear(self, rect: QRect):
         self.setGeometry(rect)
         self.liquid.capture_at(rect)
-        self.setWindowOpacity(0.0)
+        if IS_LINUX:
+            self.setWindowTitle(TITLE.format(self.number))
+            self._target = QRect(rect)
+            self._place(rect.topLeft())     # before show(): placed before its first frame
+        else:
+            self.setWindowOpacity(0.0)
         self.show()
         self.liquid.excluded = glass.exclude_from_capture(int(self.winId()))
         self.fade.start()
 
+    # Linux: the extension moves the window (Qt's move() is ignored under Wayland).
+    def _place(self, p):
+        from . import platform_linux
+        self._at = QPoint(p)
+        platform_linux.place_window(self.windowTitle(), p.x(), p.y())
+
+    def _slid(self):
+        if self._at != self._target.topLeft():
+            self._place(self._target.topLeft())
+        self.setGeometry(self._target)      # Qt's idea of where the window is
+        if self.liquid.excluded:
+            self.liquid.refresh()
+        else:
+            self.liquid.image = None
+            self.update()
+
     def relocate(self, rect: QRect):
+        if IS_LINUX:
+            if rect == self._target:
+                return
+            self._target = QRect(rect)
+            self.slide.stop()
+            if not self.isVisible():
+                self._at = rect.topLeft()
+                self._slid()
+                return
+            self.slide.setStartValue(QPoint(self._at))
+            self.slide.setEndValue(rect.topLeft())
+            self.slide.start()
+            return
         if rect == self.geometry():
             return
         self.setGeometry(rect)
@@ -168,6 +220,8 @@ class ToastCard(QWidget):
     def dismiss(self):
         self.spinner.stop()
         self.life.stop()
+        if IS_LINUX:
+            self.slide.stop()
         self.hide()
         self.closed.emit(self)
         self.deleteLater()
@@ -227,6 +281,8 @@ class ToastCard(QWidget):
     # ------------------------------------------------------------ paint
     def paintEvent(self, e):
         p = QPainter(self)
+        if IS_LINUX:
+            p.setOpacity(self._fade)
         p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.TextAntialiasing)
         r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
@@ -338,9 +394,27 @@ class ToastStack:
 
     def __init__(self):
         self.cards: list[ToastCard] = []
+        self._area: QRect | None = None     # Linux: work area taken at the last new()
 
     def _screen_rect(self) -> QRect:
+        if IS_LINUX and self._area is not None:
+            return self._area
         scr = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        return scr.availableGeometry()
+
+    @staticmethod
+    def _linux_area() -> QRect:
+        """Work area of the monitor under the pointer. The pointer and the work area come
+        from the shell extension: under Wayland QCursor.pos() only follows the pointer over
+        our own windows and availableGeometry() is the whole monitor. Without the
+        extension: Qt's screen under QCursor.pos()."""
+        from . import platform_linux
+        st = platform_linux.pointer_state()
+        pos = QPoint(st[0], st[1]) if st else QCursor.pos()
+        wa = platform_linux.work_area(pos.x(), pos.y())
+        if wa:
+            return QRect(*wa)
+        scr = QGuiApplication.screenAt(pos) or QGuiApplication.primaryScreen()
         return scr.availableGeometry()
 
     def _slot(self, i: int) -> QRect:
@@ -352,8 +426,17 @@ class ToastStack:
     def new(self) -> ToastCard:
         c = ToastCard(self)
         c.closed.connect(self._closed)
-        while len(self.cards) >= 4:
+        if IS_LINUX:
+            # The whole stack goes to the pointer's monitor; it keeps this area (also when
+            # the dock auto-hides) until the next card.
+            self._area = self._linux_area()
+        while len(self.cards) >= MAX_CARDS:
             self.cards[0].dismiss()
+        if IS_LINUX:
+            used = {k.number for k in self.cards}
+            c.number = min(n for n in range(1, MAX_CARDS + 1) if n not in used)
+            for i, k in enumerate(self.cards):
+                k.relocate(self._slot(i))
         self.cards.append(c)
         c.appear(self._slot(len(self.cards) - 1))
         return c
