@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QSizeGrip, QVBoxLayout,
                                QWidget)
@@ -11,6 +11,15 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QSizeGrip, QVBo
 from . import glass
 
 IS_WIN = sys.platform == "win32"
+IS_LINUX = sys.platform.startswith("linux")
+# Linux (#40): DragShift is a native Wayland client (docs/linux/display-backend.md). Mutter
+# places its glass windows and the user moves them with a system move, and the app is told
+# neither. So a glass window asks the shell extension where its frame is (by its title,
+# kept unique per process), a few times a second while it is shown, and re-captures what
+# is behind it once a move or resize has settled.
+TRACK_MS = 100                  # frame poll; under LiquidBacking's 140 ms debounce
+TRACK_MAX_MS = 1600             # poll back-off while the frame is unknown
+_TITLES: set[str] = set()       # titles of the open glass windows
 
 
 class GlassWindow(QWidget):
@@ -18,7 +27,14 @@ class GlassWindow(QWidget):
 
     def __init__(self, title: str, parent=None, size=(760, 640)):
         super().__init__(parent)
-        self.setWindowTitle(f"{title} — DragShift")
+        name = f"{title} — DragShift"
+        if IS_LINUX:                # the extension finds a window by its title
+            n = 2
+            while name in _TITLES:
+                name, n = f"{title} ({n}) — DragShift", n + 1
+            _TITLES.add(name)
+            self.destroyed.connect(lambda *_, t=name: _TITLES.discard(t))
+        self.setWindowTitle(name)
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_DeleteOnClose)
@@ -31,6 +47,9 @@ class GlassWindow(QWidget):
         self.liquid = glass.LiquidBacking(self, self.radius)
         self.liquid.changed.connect(self.update)
         self._fade = 0.0
+        if IS_LINUX:
+            self._frame: QRect | None = None     # where the extension last saw us
+            self._track_timer = QTimer(self, singleShot=True, timeout=self._track)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(14, 8, 14, 12)
@@ -64,6 +83,9 @@ class GlassWindow(QWidget):
     def present(self):
         """Centre on the cursor's screen, capture what's behind, then show."""
         from PySide6.QtGui import QCursor, QGuiApplication
+        if IS_LINUX:
+            self._present_linux()
+            return
         scr = (QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()).availableGeometry()
         self.resize(min(self.width(), scr.width() - 40), min(self.height(), scr.height() - 40))
         self.move(scr.center() - self.rect().center())
@@ -76,8 +98,66 @@ class GlassWindow(QWidget):
         self.raise_()
         self.activateWindow()
 
+    def _present_linux(self):
+        """Fit the work area of the pointer's monitor and show. Mutter places the window
+        (a Wayland client can't); the backdrop is captured once the extension reports
+        where it went (_track), with this window left out of the capture."""
+        from . import platform_linux
+        st = platform_linux.pointer_state()
+        x, y = (st[0], st[1]) if st else (self.screen().geometry().center().toTuple())
+        wa = platform_linux.work_area(x, y)
+        scr = QRect(*wa) if wa else self.screen().availableGeometry()
+        self.resize(min(self.width(), scr.width() - 40), min(self.height(), scr.height() - 40))
+        self._placed = True
+        self.show()
+        self.raise_()
+        self.activateWindow()   # QWindow.requestActivate(): xdg-activation under Wayland
+
+    def stage_rect(self) -> QRect | None:
+        """Linux: where this window is on screen (from the shell extension), or None."""
+        from . import platform_linux
+        f = platform_linux.window_frame(self.windowTitle())
+        if f is None:
+            return None
+        self._frame = QRect(*f)
+        return QRect(f[0], f[1], self.width(), self.height())
+
+    def _track(self):
+        """Linux: poll the frame; the first sighting captures the backdrop, a change
+        (a move: Qt gets no event for it under Wayland) refreshes it once it settles.
+        While the frame is unknown (not mapped yet, minimised, no extension) the poll
+        backs off."""
+        if not self.isVisible() or not self.liquid.excluded:
+            return
+        before = self._frame
+        if self.stage_rect() is None:
+            self._track_timer.start(min(TRACK_MAX_MS, self._track_timer.interval() * 2))
+            return
+        if before is None:
+            self.liquid.refresh()
+        elif self._frame != before:
+            self.liquid.moved()
+        self._track_timer.start(TRACK_MS)
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        if IS_LINUX:
+            self._track_timer.stop()
+
+    def changeEvent(self, e):
+        super().changeEvent(e)
+        if IS_LINUX and e.type() == QEvent.ActivationChange and self.isActiveWindow() \
+                and self._frame is not None:
+            self.liquid.moved()     # back to the window: what's behind may have changed
+
     def showEvent(self, e):
         super().showEvent(e)
+        if IS_LINUX:
+            self.liquid.excluded = glass.exclude_from_capture(int(self.winId()))
+            if self.liquid.excluded:
+                self._frame = None
+                self._track_timer.start(TRACK_MS // 2)
+            return
         if not getattr(self, "_placed", False):
             scr = self.screen().availableGeometry()
             self.move(scr.center() - self.rect().center())

@@ -88,5 +88,18 @@
       <arg name="area_width" type="i" direction="out"/>
       <arg name="area_height" type="i" direction="out"/>
     </method>
+    <!-- GetOwnWindowFrame (#40): the frame rect, in stage (logical) pixels, of the
+         CALLER's own window titled `title` (matched by the caller's pid, like
+         CaptureAreaExcludingCaller), and whether it is mapped; (false, 0, 0, 0, 0) when
+         no such window is on screen. Under Wayland the app is never told where its
+         windows are; its glass windows capture what is behind them there. Read-only. -->
+    <method name="GetOwnWindowFrame">
+      <arg name="title" type="s" direction="in"/>
+      <arg name="mapped" type="b" direction="out"/>
+      <arg name="x" type="i" direction="out"/>
+      <arg name="y" type="i" direction="out"/>
+      <arg name="width" type="i" direction="out"/>
+      <arg name="height" type="i" direction="out"/>
+    </method>
   </interface>
 </node>
