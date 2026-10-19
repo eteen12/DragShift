@@ -153,7 +153,9 @@ and runs from a launcher session root (`/tmp/dragshift-session-*`).
   `drag_to(shell, x, y, start=..., hold="Shift_L")`, `type_text` and `release_all`. Keys
   are X keysym names (`Shift_L`, `Control_L`, `Alt_L`, `Escape`, `Return`) or characters.
 - Each call returns after the shell has handled its events, so a key release can never
-  overtake the move sent before it.
+  overtake the move sent before it. It also waits until the seat's modifier mask shows the
+  Shift, Control and Alt keys and the buttons held, so the next reader never sees a
+  released key as still down.
 - `TypeText` types only characters that the session's keymap has. The session uses the
   default `us` layout, which covers ASCII.
 - Do not use uinput, `ydotool` or `xdotool` instead: those drive the real seat.
