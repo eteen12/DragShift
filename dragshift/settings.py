@@ -163,7 +163,9 @@ class SettingsWindow(GlassWindow):
         r += 1
 
         if IS_WIN or IS_MAC or IS_LINUX:
-            self.auto = QCheckBox("Start DragShift with Windows" if IS_WIN else "Open DragShift at login")
+            self.auto = QCheckBox("Start DragShift with Windows" if IS_WIN
+                                  else "Start DragShift when you log in" if IS_LINUX
+                                  else "Open DragShift at login")
             self.auto.setChecked(autostart_enabled())
             self.auto.toggled.connect(set_autostart)
             grid.addWidget(self.auto, r, 1)
@@ -199,7 +201,9 @@ class WelcomeWindow(GlassWindow):
         super().__init__("Welcome to DragShift", size=(560, 430))
         self.s = settings
         steps = [
-            ("1", "Start dragging any file", "in Finder or on the desktop" if IS_MAC else "in File Explorer or on the desktop"),
+            ("1", "Start dragging any file", "in Finder or on the desktop" if IS_MAC
+                                            else "in Files or on the desktop" if IS_LINUX
+                                            else "in File Explorer or on the desktop"),
             ("2", f"Press {trigger_label}", "the glass menu opens right under your cursor"),
             ("3", "Drop it on a slice", "the result is saved next to the original"),
             ("⇄", f"Tap {trigger_label} again", "to switch between Convert and Tools"),
@@ -237,7 +241,9 @@ class WelcomeWindow(GlassWindow):
                 self.body.addWidget(b, 0, Qt.AlignLeft)
         foot = QHBoxLayout()
         if IS_WIN or IS_MAC or IS_LINUX:
-            self.auto = QCheckBox("Start with Windows" if IS_WIN else "Open at login")
+            self.auto = QCheckBox("Start with Windows" if IS_WIN
+                                  else "Start when you log in" if IS_LINUX
+                                  else "Open at login")
             self.auto.setChecked(True)
             foot.addWidget(self.auto)
         foot.addStretch(1)
