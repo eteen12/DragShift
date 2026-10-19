@@ -1,0 +1,103 @@
+...................................s...............................ss.s. [ 11%]
+s.s.s..s....s.s......................s.s................................ [ 23%]
+...........s............................................................ [ 35%]
+.......................................................................F [ 46%]
+F....................................................................... [ 58%]
+........................................................................ [ 70%]
+........................................................................ [ 81%]
+........................................................................ [ 93%]
+........................................                                 [100%]
+=================================== FAILURES ===================================
+____________ test_crop_window_backdrop_is_what_is_behind_it[scale1] ____________
+
+env = {'session': <tests.linux.session.Session object at 0x739e21ee90d0>, 'shell': <tests.linux.shell.ShellHelper object at 0x739e21eebfb0>, 'scale': 1, 'photo': PosixPath('/tmp/dragshift-session-bd6ar6fl/tmp/photo.png'), ...}
+
+    def test_crop_window_backdrop_is_what_is_behind_it(env):
+        s, shell, app, scale = env["session"], env["shell"], env["app"], env["scale"]
+        focused_before = [w["title"] for w in shell.list_windows() if w["focused"]]
+        t0 = time.monotonic()
+        title = env["crop"] = _open_crop(env)
+        shown_after = time.monotonic() - t0
+        st = app.cmd(cmd="state", title=title)
+        win = _window(shell, title)
+        frame = win["frame"]
+        src, glass_img = app.images(title)
+        behind = _behind(env["before"], frame)
+        wrong = _behind(env["before"], st["qt_frame"])
+        on_screen = _behind(_full(env, "crop-shown"), frame)
+        d, d_wrong = _diff(src, behind), _diff(wrong, behind)
+        print(f"\nscale {scale:g}: Crop window at {frame} (Qt's frameGeometry {st['qt_frame']}); "
+              f"backdrop from {st['last']['rect']} via {st['last']['source']}, "
+              f"{st['last']['ms']:.1f} ms; vs the screen behind: {d:.2f} "
+              f"(Qt's rect would give {d_wrong:.2f}); rendered backdrop std {_std(glass_img):.1f}; "
+              f"glass after {shown_after:.2f} s; focused {win['focused']} (before: {focused_before}), "
+              f"active {st['active']}")
+        _evidence(_side_by_side(behind, src, glass_img, on_screen),
+                  f"crop-behind-source-glass-screen-scale{scale}.png")
+        _evidence(_full(env, "crop-full"), f"crop-window-scale{scale}.png")
+    
+        assert win["client"] == "wayland" and win["pid"] == app.ready["pid"]
+        assert st["last"]["rect"] == list(frame) and frame[2:] == tuple(st["size"])
+        assert st["last"]["below"] and st["last"]["source"] == "capture"
+>       assert d < SAME                                   # exactly what is behind the window
+        ^^^^^^^^^^^^^^^
+E       assert 9.91489956958393 < 3.0
+
+tests/linux/test_window_glass.py:187: AssertionError
+----------------------------- Captured stdout call -----------------------------
+
+scale 1: Crop window at (66, 32, 820, 680) (Qt's frameGeometry [0, 0, 820, 680]); backdrop from [66, 32, 820, 680] via capture, 36.5 ms; vs the screen behind: 9.91 (Qt's rect would give 39.55); rendered backdrop std 66.4; glass after 0.50 s; focused True (before: ['DragShift input probe e0198f']), active True
+______________ test_title_bar_drag_refreshes_the_backdrop[scale1] ______________
+
+env = {'session': <tests.linux.session.Session object at 0x739e21ee90d0>, 'shell': <tests.linux.shell.ShellHelper object at 0x739e21eebfb0>, 'scale': 1, 'photo': PosixPath('/tmp/dragshift-session-bd6ar6fl/tmp/photo.png'), ...}
+
+    def test_title_bar_drag_refreshes_the_backdrop(env):
+        shell, app, scale = env["shell"], env["app"], env["scale"]
+        title = env["crop"]
+        frame0 = _window(shell, title)["frame"]
+        src0, glass0 = app.images(title)
+        n0 = len(app.log_lines("liquid: refreshed"))
+        captures0 = app.cmd(cmd="state", title=title)["captures"]
+        x, y = frame0[0] + 300, frame0[1] + 18            # the title bar, right of the title
+        inject.glide(shell, x, y, 0.25)
+        inject.button_down(shell)
+        time.sleep(0.15)
+        inject.glide(shell, x + 200, y, 0.6)
+        inject.button_up(shell)
+        t_up = time.monotonic()
+        inject.move(shell, 40, 860)
+    
+        def refreshed():
+            st = app.cmd(cmd="state", title=title)
+            win = _window(shell, title)
+            return st if (st["captures"] > captures0 and win
+                          and st["last"]["rect"] == list(win["frame"])
+                          and len(app.log_lines("liquid: refreshed")) > n0) else None
+        st = _wait(refreshed, 5, 0.05)
+        after = time.monotonic() - t_up
+        assert st, app.cmd(cmd="state", title=title)
+        frame1 = _window(shell, title)["frame"]
+        src1, glass1 = app.images(title)
+        behind1 = _behind(env["before"], frame1)
+        lines = app.log_lines("liquid: refreshed")
+        print(f"\nscale {scale:g}: dragged {frame0[:2]} → {frame1[:2]}; refreshed "
+              f"{after:.2f} s after the button went up, {st['captures'] - captures0} capture(s); "
+              f"new backdrop vs the screen behind {_diff(src1, behind1):.2f}, vs the old backdrop "
+              f"{_diff(src1, src0):.2f}; log: {lines[n0:]}")
+        _evidence(_side_by_side(src0, src1, glass1), f"drag-old-new-glass-scale{scale}.png")
+        _evidence(_full(env, "crop-dragged"), f"crop-dragged-scale{scale}.png")
+    
+        assert abs(frame1[0] - frame0[0] - 200) <= 2 and frame1[1] == frame0[1]
+        assert st["captures"] - captures0 == 1            # one refresh once the move settled
+>       assert _diff(src1, behind1) < SAME
+E       assert 16.495543400286945 < 3.0
+E        +  where 16.495543400286945 = _diff(<PIL.Image.Image image mode=RGB size=820x680 at 0x739E21DFD4F0>, <PIL.Image.Image image mode=RGB size=820x680 at 0x739E21DFCFB0>)
+
+tests/linux/test_window_glass.py:232: AssertionError
+----------------------------- Captured stdout call -----------------------------
+
+scale 1: dragged (66, 32) → (266, 32); refreshed 0.44 s after the button went up, 1 capture(s); new backdrop vs the screen behind 16.50, vs the old backdrop 32.08; log: ['liquid: refreshed 820x680 at (266, 32) from capture: capture 61.9 ms (pool thread), GUI thread 22.9 ms (gc 19.4 ms), total 194.1 ms']
+=========================== short test summary info ============================
+FAILED tests/linux/test_window_glass.py::test_crop_window_backdrop_is_what_is_behind_it[scale1]
+FAILED tests/linux/test_window_glass.py::test_title_bar_drag_refreshes_the_backdrop[scale1]
+2 failed, 601 passed, 13 skipped in 1180.61s (0:19:40)

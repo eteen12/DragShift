@@ -1,0 +1,42 @@
+
+{"scale": 1, "where": "files", "tl": [310, 250], "capture_ms": 11.9, "screen_vs_glass": 0.0, "corr_glass_behind": 0.9146048557405209, "corr_frost_behind": 0.6958640447128315, "glass_vs_behind": 7.53939962387085, "glass_vs_frost": 46.33394241333008, "std_behind": 20.016014099121094, "std_glass": 13.0701322555542, "std_frost": 14.050311088562012, "backdrop_vs_behind": 0.0}
+.
+{"scale": 1, "where": "desktop", "tl": [950, 250], "capture_ms": 21.1, "screen_vs_glass": 0.0, "corr_glass_behind": 0.8540211116355927, "corr_frost_behind": -0.03264374812302915, "glass_vs_behind": 6.7133708000183105, "glass_vs_frost": 31.58919334411621, "std_behind": 24.665952682495117, "std_glass": 26.21793556213379, "std_frost": 18.291597366333008, "backdrop_vs_behind": 0.0}
+.
+{"scale": 1, "red_before": 0, "red_during": 3068, "red_in_capture": 0, "red_in_backdrop": 0, "capture_vs_before": 0.0}
+.{'where': 'files', 'rep': 0, 'shift_to_glass_ms': 200.45381400268525, 'source': 'capture', 'entered_first': True, 'capture_ms': 16.6, 'glass_ms': 183.5, 'first_frame_ms': 115.6}
+{'where': 'files', 'rep': 1, 'shift_to_glass_ms': 128.17404899396934, 'source': 'capture', 'entered_first': True, 'capture_ms': 16.9, 'glass_ms': 115.2, 'first_frame_ms': 42.0}
+{'where': 'files', 'rep': 2, 'shift_to_glass_ms': 92.90149000298698, 'source': 'capture', 'entered_first': True, 'capture_ms': 13.5, 'glass_ms': 77.8, 'first_frame_ms': 34.9}
+{'where': 'files', 'rep': 3, 'shift_to_glass_ms': 88.09086499968544, 'source': 'capture', 'entered_first': True, 'capture_ms': 14.5, 'glass_ms': 81.8, 'first_frame_ms': 37.5}
+{'where': 'files', 'rep': 4, 'shift_to_glass_ms': 104.59235300368164, 'source': 'capture', 'entered_first': True, 'capture_ms': 13.6, 'glass_ms': 94.6, 'first_frame_ms': 41.8}
+{'where': 'desktop', 'rep': 0, 'shift_to_glass_ms': 99.40326999640092, 'source': 'capture', 'entered_first': True, 'capture_ms': 16.0, 'glass_ms': 89.2, 'first_frame_ms': 37.7}
+{'where': 'desktop', 'rep': 1, 'shift_to_glass_ms': 85.57390900386963, 'source': 'capture', 'entered_first': True, 'capture_ms': 20.8, 'glass_ms': 80.6, 'first_frame_ms': 42.8}
+{'where': 'desktop', 'rep': 2, 'shift_to_glass_ms': 87.83457599929534, 'source': 'capture', 'entered_first': True, 'capture_ms': 15.2, 'glass_ms': 74.3, 'first_frame_ms': 35.2}
+{'where': 'desktop', 'rep': 3, 'shift_to_glass_ms': 82.17974899889668, 'source': 'capture', 'entered_first': True, 'capture_ms': 16.2, 'glass_ms': 79.1, 'first_frame_ms': 36.7}
+{'where': 'desktop', 'rep': 4, 'shift_to_glass_ms': 90.06427599524613, 'source': 'capture', 'entered_first': True, 'capture_ms': 18.8, 'glass_ms': 76.7, 'first_frame_ms': 40.4}
+
+scale 1: {"capture_ms": {"median": 15.7, "max": 20.8}, "first_frame_ms": {"median": 38.95, "max": 42.8}, "glass_ms": {"median": 79.85, "max": 115.2}, "shift_to_glass_ms": {"median": 89.07757049746579, "max": 128.17404899396934}, "first_popup": {"where": "files", "rep": 0, "shift_to_glass_ms": 200.45381400268525, "source": "capture", "entered_first": true, "capture_ms": 16.6, "glass_ms": 183.5, "first_frame_ms": 115.6}}
+.
+{"scale": 1, "warm_up_ms": 220, "wallpaper_fallback_ms": 4.1, "line": "menu: wallpaper fallback, 4.1 ms"}
+.
+{"scale": 2, "where": "files", "tl": [310, 250], "capture_ms": 27.9, "screen_vs_glass": 0.04162689670920372, "corr_glass_behind": 0.9182611218667597, "corr_frost_behind": 0.7046190989262183, "glass_vs_behind": 7.5121564865112305, "glass_vs_frost": 46.20798873901367, "std_behind": 19.621294021606445, "std_glass": 12.966690063476562, "std_frost": 13.862926483154297, "backdrop_vs_behind": 0.6343374848365784}
+.
+{"scale": 2, "where": "desktop", "tl": [950, 250], "capture_ms": 82.8, "screen_vs_glass": 0.01641213335096836, "corr_glass_behind": 0.8529837965017977, "corr_frost_behind": -0.03290391179944133, "glass_vs_behind": 6.9648823738098145, "glass_vs_frost": 31.777984619140625, "std_behind": 24.68853759765625, "std_glass": 26.234378814697266, "std_frost": 18.294343948364258, "backdrop_vs_behind": 0.2608333230018616}
+.
+{"scale": 2, "red_before": 0, "red_during": 3068, "red_in_capture": 0, "red_in_backdrop": 0, "capture_vs_before": 0.2608333230018616}
+.{'where': 'files', 'rep': 0, 'shift_to_glass_ms': 273.66136199998436, 'source': 'capture', 'entered_first': True, 'capture_ms': 59.6, 'glass_ms': 266.4, 'first_frame_ms': 183.2}
+{'where': 'files', 'rep': 1, 'shift_to_glass_ms': 136.6621160050272, 'source': 'capture', 'entered_first': True, 'capture_ms': 50.7, 'glass_ms': 134.9, 'first_frame_ms': 73.5}
+{'where': 'files', 'rep': 2, 'shift_to_glass_ms': 153.90858099999605, 'source': 'capture', 'entered_first': True, 'capture_ms': 55.3, 'glass_ms': 138.4, 'first_frame_ms': 79.7}
+{'where': 'files', 'rep': 3, 'shift_to_glass_ms': 154.82105099363253, 'source': 'capture', 'entered_first': True, 'capture_ms': 56.6, 'glass_ms': 140.2, 'first_frame_ms': 82.2}
+{'where': 'files', 'rep': 4, 'shift_to_glass_ms': 133.11680200422416, 'source': 'capture', 'entered_first': True, 'capture_ms': 51.3, 'glass_ms': 131.1, 'first_frame_ms': 73.0}
+{'where': 'desktop', 'rep': 0, 'shift_to_glass_ms': 156.8477510008961, 'source': 'capture', 'entered_first': True, 'capture_ms': 64.0, 'glass_ms': 147.8, 'first_frame_ms': 86.1}
+{'where': 'desktop', 'rep': 1, 'shift_to_glass_ms': 153.30190199892968, 'source': 'capture', 'entered_first': True, 'capture_ms': 69.5, 'glass_ms': 148.5, 'first_frame_ms': 91.7}
+{'where': 'desktop', 'rep': 2, 'shift_to_glass_ms': 141.80870900599984, 'source': 'capture', 'entered_first': True, 'capture_ms': 61.6, 'glass_ms': 136.6, 'first_frame_ms': 83.2}
+{'where': 'desktop', 'rep': 3, 'shift_to_glass_ms': 153.0218660045648, 'source': 'capture', 'entered_first': True, 'capture_ms': 71.8, 'glass_ms': 149.8, 'first_frame_ms': 92.7}
+{'where': 'desktop', 'rep': 4, 'shift_to_glass_ms': 156.1566189993755, 'source': 'capture', 'entered_first': True, 'capture_ms': 64.9, 'glass_ms': 143.1, 'first_frame_ms': 87.1}
+
+scale 2: {"capture_ms": {"median": 59.1, "max": 71.8}, "first_frame_ms": {"median": 82.7, "max": 92.7}, "glass_ms": {"median": 139.3, "max": 149.8}, "shift_to_glass_ms": {"median": 153.16188400174724, "max": 156.1566189993755}, "first_popup": {"where": "files", "rep": 0, "shift_to_glass_ms": 273.66136199998436, "source": "capture", "entered_first": true, "capture_ms": 59.6, "glass_ms": 266.4, "first_frame_ms": 183.2}}
+.
+{"scale": 2, "warm_up_ms": 225, "wallpaper_fallback_ms": 5.7, "line": "menu: wallpaper fallback, 5.7 ms"}
+.
+10 passed in 116.22s (0:01:56)

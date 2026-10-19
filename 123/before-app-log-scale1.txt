@@ -1,0 +1,62 @@
+trigger: following the extension's pointer state
+wallpaper: cache warmed for 1 monitor(s) in 208 ms
+trigger: menu at (632, 266)
+menu: linux capture 28.4 ms
+menu: at (432, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+menu: glass on screen 529.4 ms after popup, first frame 298.8 ms
+menu: dropped beside the petals, nothing to run
+trigger: menu at (632, 266)
+menu: linux capture 11.8 ms
+menu: at (432, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+menu: glass on screen 222.1 ms after popup, first frame 33.3 ms
+menu: dropped beside the petals, nothing to run
+trigger: menu at (632, 266)
+menu: linux capture 13.4 ms
+menu: at (432, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+menu: glass on screen 254.5 ms after popup, first frame 34.5 ms
+menu: dropped beside the petals, nothing to run
+trigger: menu at (632, 266)
+menu: linux capture 13.1 ms
+menu: at (432, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+menu: glass on screen 257.7 ms after popup, first frame 35.9 ms
+menu: dropped beside the petals, nothing to run
+trigger: menu at (632, 266)
+menu: linux capture 12.7 ms
+menu: at (432, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+menu: glass on screen 256.5 ms after popup, first frame 35.1 ms
+menu: dropped beside the petals, nothing to run
+trigger: menu at (1457, 647)
+menu: linux capture 17.0 ms
+menu: at (1199, 447) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+menu: glass on screen 275.6 ms after popup, first frame 38.5 ms
+menu: dropped beside the petals, nothing to run
+trigger: menu at (1457, 647)
+menu: linux capture 16.9 ms
+menu: at (1199, 447) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+menu: glass on screen 262.1 ms after popup, first frame 38.4 ms
+menu: dropped beside the petals, nothing to run
+trigger: menu at (1457, 647)
+menu: linux capture 17.9 ms
+menu: at (1199, 447) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+menu: glass on screen 278.1 ms after popup, first frame 39.2 ms
+menu: dropped beside the petals, nothing to run
+trigger: menu at (1457, 647)
+menu: linux capture 15.2 ms
+menu: at (1199, 447) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+menu: glass on screen 281.9 ms after popup, first frame 36.1 ms
+menu: dropped beside the petals, nothing to run
+trigger: menu at (1457, 647)
+menu: linux capture 16.4 ms
+menu: at (1199, 447) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+menu: glass on screen 261.8 ms after popup, first frame 37.0 ms
+menu: dropped beside the petals, nothing to run

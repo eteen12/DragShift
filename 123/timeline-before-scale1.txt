@@ -1,0 +1,27 @@
+menu: at (432, 66) 400x400, moved now: False, backdrop: capture
+DBG paint at 35 took 1.5
+DBG load 49
+menu: 1 file(s), hub '10.1 KB', rings: Convert 9, Tools 8
+DBG paint at 50 took 7.9
+DBG paint at 60 took 12.9
+DBG paint at 75 took 11.5
+DBG paint at 89 took 11.5
+DBG paint at 103 took 12.4
+DBG paint at 117 took 11.3
+DBG job n=4 start 31 sdf 24 render 86 end 141
+DBG paint at 130 took 12.2
+DBG delivered n=4 at 144
+DBG paint at 146 took 10.6
+DBG paint at 158 took 11.6
+DBG job n=7 start 31 sdf 56 render 83 end 171
+DBG paint at 171 took 10.5
+DBG delivered n=7 at 182
+DBG paint at 182 took 10.6
+DBG paint at 195 took 10.0
+DBG paint at 211 took 10.6
+DBG job n=8 start 50 sdf 107 render 69 end 226
+DBG delivered n=8 at 227
+DBG job n=9 start 50 sdf 126 render 51 end 227
+DBG paint at 227 took 9.9
+DBG delivered n=9 at 237
+menu: glass on screen 238.0 ms after popup, first frame 35.6 ms
