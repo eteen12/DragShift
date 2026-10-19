@@ -33,7 +33,7 @@ gnome = pytest.mark.gnome
 
 SIZE = (1600, 900)
 # Own windows go over the Files window (NAUTILUS_RECT = 90, 150, 760, 560).
-OVER = (250, 300, 400, 300)
+OVER = (250, 200, 400, 300)           # over the coloured thumbnails
 ASIDE = (1000, 250, 400, 300)           # off the Files window, over the wallpaper
 
 
@@ -207,13 +207,13 @@ def shell_full(s, shell, name) -> Image.Image:
 def test_every_window_of_the_caller_is_left_out(ex_session, shell, nautilus):
     """Edge case: the pid matches several windows (menu + toast): all are hidden."""
     s = ex_session
-    rect = (200, 250, 560, 400)
+    rect = (200, 190, 560, 400)
     with OwnWindows(s, shell, count=2) as own:
         own.move(0, *ASIDE)
         own.move(1, 1000, 600, 300, 200)
         behind = _settled(s, shell, rect)
-        own.move(0, 220, 270, 300, 200)
-        own.move(1, 430, 420, 300, 200)               # overlaps window 0
+        own.move(0, 220, 200, 300, 200)
+        own.move(1, 430, 350, 300, 200)               # overlaps window 0
         shown = _helper_area(s, shell, *rect, "two-shown.png")
         excluded, _ = own.capture(*rect, exclude=True)
         print(f"\ntwo own windows: own-colour pixels shown {_solid_pixels(shown)}, "
@@ -250,7 +250,7 @@ def test_real_glass_window_backdrop(ex_session, shell, nautilus):
     below_window set (what LiquidBacking does for a visible window) is the screen
     capture of Files without the window; with below_window 0 the window is in it."""
     s = ex_session
-    rect = (300, 280, 420, 320)
+    rect = (200, 190, 420, 320)
     with OwnWindows(s, shell, kind="glass") as own:
         own.move(0, 1000, 250, 420, 320)
         behind = _settled(s, shell, rect)
