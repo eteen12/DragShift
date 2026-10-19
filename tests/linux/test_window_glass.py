@@ -30,6 +30,7 @@ from tests.linux import inject
 from tests.linux.conftest import require_session_tools
 from tests.linux.files import NAUTILUS_RECT, Files
 from tests.linux.glass_app import GlassApp
+from tests.linux.probe_window import ProbeWindow
 from tests.linux.session import Session
 from tests.linux.shell import ShellHelper
 from tests.linux.test_capture import _diff, _png
@@ -38,6 +39,9 @@ from tests.linux.test_extension import (_errors_about, _has_owner, _state,  # no
 
 pytestmark = pytest.mark.gnome
 SCALES = {1: (1600, 900), 2: (3200, 1800)}     # both 1600x900 logical
+# Takes the focus before the Crop window does; clear of the Crop window (also after its
+# drag), of its off-screen strip (x >= 1525) and of the toasts (y >= 663).
+PROBE = (1100, 60, 400, 300)
 SAME = 3.0          # mean abs difference per channel (0..255) for "the same pixels"
 
 
@@ -116,14 +120,22 @@ def env(request, built_dir):  # noqa: F811
             nautilus = files.open_folder(folder, view="icon")
             photo = s.root / "tmp" / "photo.png"
             Image.radial_gradient("L").resize((640, 480)).convert("RGB").save(photo)
+            # Files is drawn unfocused in the reference shot: the Crop window takes the
+            # focus, which would otherwise change what is behind it. A probe window
+            # outside every compared rect has the focus instead.
+            probe = ProbeWindow(s, shell, platform="wayland", geometry=PROBE)
+            probe.focus()
             inject.move(shell, 40, 860)               # the pointer out of the way
             env = {"session": s, "shell": shell, "scale": scale, "photo": photo,
                    "nautilus": nautilus}
             env["before"] = _settled_full(env)        # no DragShift window anywhere yet
             _evidence(env["before"], f"before-scale{scale}.png")
-            with GlassApp(s) as app:
-                env["app"] = app
-                yield env
+            try:
+                with GlassApp(s) as app:
+                    env["app"] = app
+                    yield env
+            finally:
+                probe.close()
 
 
 def _wait_state(app, title, pred, timeout=8.0):
@@ -146,8 +158,7 @@ def _open_crop(env) -> str:
 
 def test_crop_window_backdrop_is_what_is_behind_it(env):
     s, shell, app, scale = env["session"], env["shell"], env["app"], env["scale"]
-    shell.activate_window(env["nautilus"]["id"])      # Files has the focus before
-    assert _wait(lambda: _window(shell, env["nautilus"]["title"])["focused"])
+    focused_before = [w["title"] for w in shell.list_windows() if w["focused"]]
     t0 = time.monotonic()
     title = env["crop"] = _open_crop(env)
     shown_after = time.monotonic() - t0
@@ -163,7 +174,8 @@ def test_crop_window_backdrop_is_what_is_behind_it(env):
           f"backdrop from {st['last']['rect']} via {st['last']['source']}, "
           f"{st['last']['ms']:.1f} ms; vs the screen behind: {d:.2f} "
           f"(Qt's rect would give {d_wrong:.2f}); rendered backdrop std {_std(glass_img):.1f}; "
-          f"glass after {shown_after:.2f} s; focused {win['focused']}, active {st['active']}")
+          f"glass after {shown_after:.2f} s; focused {win['focused']} (before: {focused_before}), "
+          f"active {st['active']}")
     _evidence(_side_by_side(behind, src, glass_img, on_screen),
               f"crop-behind-source-glass-screen-scale{scale}.png")
     _evidence(_full(env, "crop-full"), f"crop-window-scale{scale}.png")
@@ -173,6 +185,7 @@ def test_crop_window_backdrop_is_what_is_behind_it(env):
     assert st["last"]["below"] and st["last"]["source"] == "capture"
     assert d < SAME                                   # exactly what is behind the window
     assert _std(glass_img) > 10                       # a refracted picture, not a flat tint
+    assert title not in focused_before
     assert win["focused"] and st["active"]            # present() gave it the focus
     assert app.log_lines("liquid: refreshed")
 
@@ -305,7 +318,7 @@ def test_refresh_cost(env):
     the Crop window (820x680) and a toast (380x104)."""
     shell, app, scale = env["shell"], env["app"], env["scale"]
     crop = _open_crop(env)
-    card = app.cmd(cmd="toast", src=str(env["photo"]), timeout=60)["title"]
+    card = app.cmd(cmd="toast", src=str(env["photo"]), keep=True, timeout=60)["title"]
     _wait_state(app, card, lambda st: st["image"] and st["captures"] >= 1)
     rows = {}
     for name, title in (("Crop 820x680", crop), ("toast 380x104", card)):

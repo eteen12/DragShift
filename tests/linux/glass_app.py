@@ -17,8 +17,9 @@ Commands are JSON lines on stdin, one JSON reply line each on stdout:
   captures (how many), last {rect, below, source, ms}.
 - {"cmd": "save", "title", "source", "glass"}: the last captured PIL image and the rendered
   backdrop (LiquidBacking.image) as PNGs.
-- {"cmd": "toast", "src"} -> {"title"}: a card from ToastStack.new() that shows "working",
-  converts `src` to JPG for real (convert.convert) and turns into the done card.
+- {"cmd": "toast", "src", "keep"} -> {"title"}: a card from ToastStack.new() that shows
+  "working", converts `src` to JPG for real (convert.convert) and turns into the done
+  card; with keep, it stays until dismissed.
 - {"cmd": "dismiss", "title"}, {"cmd": "close", "title"}
 - {"cmd": "bench", "title", "n"} -> per-step times of n refreshes and n frame polls.
 The first line is {"type": "ready", "pid", "platform"}.
@@ -190,8 +191,6 @@ def main() -> int:
 
     def bench(title, n):
         w = widgets[title]
-        if hasattr(w, "life"):
-            w.life.stop()                 # a card must outlive the benchmark
         res = {"poll": [], "gc": [], "capture": [], "render": [], "total": []}
         for _ in range(n):
             t = time.perf_counter()
@@ -264,6 +263,8 @@ def main() -> int:
                 spin(300)
                 outs = convert.convert(c["src"], "image", "JPG")
                 card.done(report.summarize("convert:JPG", [c["src"]], outs))
+                if c.get("keep"):
+                    card.life.stop()      # stays until dismissed (benchmarks)
                 reply(title=card.windowTitle())
             elif c["cmd"] == "dismiss":
                 widgets.pop(c["title"]).dismiss()
