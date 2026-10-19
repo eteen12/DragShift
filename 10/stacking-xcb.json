@@ -1,0 +1,24 @@
+{
+ "files": {
+  "menu_stacking": 1,
+  "files_stacking": 0,
+  "focused": [
+   "pics-22346396696868"
+  ],
+  "centre_pixel": [
+   0,
+   200,
+   0
+  ]
+ },
+ "desktop": {
+  "menu_stacking": 1,
+  "files_stacking": 0,
+  "focused": [],
+  "centre_pixel": [
+   0,
+   200,
+   0
+  ]
+ }
+}

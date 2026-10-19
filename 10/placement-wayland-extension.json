@@ -1,0 +1,104 @@
+[
+ {
+  "req": [
+   800,
+   400
+  ],
+  "frame": [
+   800,
+   400,
+   400,
+   400
+  ],
+  "above": true,
+  "focused": [
+   "pics-22333667495997"
+  ],
+  "placed_now": false
+ },
+ {
+  "req": [
+   100,
+   100
+  ],
+  "frame": [
+   100,
+   100,
+   400,
+   400
+  ],
+  "above": true,
+  "focused": [
+   "pics-22333667495997"
+  ],
+  "placed_now": false
+ },
+ {
+  "req": [
+   1190,
+   490
+  ],
+  "frame": [
+   1190,
+   490,
+   400,
+   400
+  ],
+  "above": true,
+  "focused": [
+   "pics-22333667495997"
+  ],
+  "placed_now": false
+ },
+ {
+  "req": [
+   800,
+   400
+  ],
+  "frame": [
+   800,
+   400,
+   400,
+   400
+  ],
+  "above": true,
+  "focused": [
+   "pics-22333667495997"
+  ],
+  "placed_now": false
+ },
+ {
+  "req": [
+   100,
+   100
+  ],
+  "frame": [
+   100,
+   100,
+   400,
+   400
+  ],
+  "above": true,
+  "focused": [
+   "pics-22333667495997"
+  ],
+  "placed_now": false
+ },
+ {
+  "req": [
+   1190,
+   490
+  ],
+  "frame": [
+   1190,
+   490,
+   400,
+   400
+  ],
+  "above": true,
+  "focused": [
+   "pics-22333667495997"
+  ],
+  "placed_now": false
+ }
+]

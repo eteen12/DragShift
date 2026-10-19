@@ -1,0 +1,25 @@
+{
+ "enter": {
+  "urls": [
+   "file:///tmp/dragshift-session-rt08k6mi/home/pics-22362816584733/Photo.jpg"
+  ],
+  "possible": [
+   "MoveAction"
+  ],
+  "proposed": "MoveAction",
+  "action": "MoveAction"
+ },
+ "drop": {
+  "urls": [
+   "file:///tmp/dragshift-session-rt08k6mi/home/pics-22362816584733/Photo.jpg"
+  ],
+  "possible": [
+   "MoveAction"
+  ],
+  "proposed": "MoveAction",
+  "action": "MoveAction"
+ },
+ "focused_after": [
+  "pics-22362816584733"
+ ]
+}

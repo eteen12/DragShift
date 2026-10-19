@@ -1,0 +1,25 @@
+{
+ "enter": {
+  "urls": [
+   "file:///tmp/dragshift-session-rt08k6mi/home/Desktop/Desk.jpg"
+  ],
+  "possible": [
+   "CopyAction",
+   "MoveAction"
+  ],
+  "proposed": "CopyAction",
+  "action": "CopyAction"
+ },
+ "drop": {
+  "urls": [
+   "file:///tmp/dragshift-session-rt08k6mi/home/Desktop/Desk.jpg"
+  ],
+  "possible": [
+   "CopyAction",
+   "MoveAction"
+  ],
+  "proposed": "CopyAction",
+  "action": "CopyAction"
+ },
+ "focused_after": []
+}
