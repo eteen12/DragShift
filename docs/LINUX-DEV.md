@@ -623,11 +623,17 @@ shows the wrong part of the screen.
   settles. Each refresh is logged as `liquid: refreshed WxH at (x, y) from capture: ...`.
 - Without the extension both use the painted frost and nothing is polled or captured.
 
-A refresh runs `gc.collect()`, the capture (both on the GUI thread) and the render (a pool
-thread). On this machine: about 15 ms, 35 ms (scale 1) or 150 ms (scale 2), and 80 ms for
-an 820x680 window. `tests/linux/glass_app.py` runs the real `CropWindow` and `ToastStack`
-in one process inside the session and records every capture, so the test can compare each
-backdrop with the screen behind the window:
+A refresh runs the capture on a pool thread (#107): the D-Bus call and the PNG decode,
+over a second jeepney connection (`platform_linux.capture(..., worker=True)`), so the GUI
+thread's own calls, like the trigger's 15 ms `GetPointer`, never wait behind it. The image
+comes back to the GUI thread through a queued signal with a serial (an overtaken capture is
+dropped). There the wallpaper fallback, `gc.collect()` (#88) and the start of the render (a
+pool thread) run. On this machine, for an 820x680 window: capture 35 ms (scale 1) or 150 ms
+(scale 2), render 80 ms, and the GUI thread is blocked for about 20 ms in all, mostly the
+`gc.collect()` (it was 55 and 170 ms with the capture on the GUI thread).
+`tests/linux/glass_app.py` runs the real `CropWindow` and `ToastStack` in one process
+inside the session and records every backdrop, so the test can compare each with the
+screen behind the window; its bench measures the GUI thread with a 5 ms heartbeat timer:
 
 ```sh
 uv run pytest tests/test_window_glass.py tests/linux/test_window_glass.py -s   # scale 1 and 2; prints timings
