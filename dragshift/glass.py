@@ -10,6 +10,8 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QImage, QLinearGradient,
                            QPainter, QPainterPath, QPen, QPixmap, QRadialGradient)
 
+IS_LINUX = sys.platform.startswith("linux")
+
 # Rainbow stops for the iridescent rim (soft, pastel-ish so it reads as "glass").
 IRIDESCENT = ["#ff6b9d", "#ffb36b", "#ffe66b", "#7dffb0", "#6bd5ff", "#8a7bff", "#e07bff", "#ff6b9d"]
 
@@ -237,6 +239,9 @@ def exclude_from_capture(hwnd: int) -> bool:
     if sys.platform == "darwin":
         from . import platform_mac
         return platform_mac.OK      # macOS: we capture "below our window" instead
+    if IS_LINUX:
+        from . import platform_linux
+        return platform_linux.extension_available()   # the shell extension captures without us
     if sys.platform != "win32" or os.environ.get("DRAGSHIFT_RECORDING"):
         return False
     try:
@@ -273,15 +278,34 @@ class _LiquidJob(QRunnable):
             traceback.print_exc()
 
 
+LAST_SOURCE = ""  # Linux: what the last grab_screen() used: "capture", "wallpaper" or ""
+
+
 def grab_screen(x: int, y: int, w: int, h: int, below_window: int = 0):
     """Screen pixels under a rect (logical coords) as a PIL image of size w×h.
-    macOS: native capture that leaves out the drag picture (and `below_window` and above)."""
+    macOS: native capture that leaves out the drag picture (and `below_window` and above).
+    Linux: the shell extension's capture (never contains the drag picture; any non-zero
+    `below_window` also leaves our own windows out), else the wallpaper under the rect.
+    Qt's grab is the last resort only when our own window doesn't need leaving out."""
+    global LAST_SOURCE
     if sys.platform == "darwin":
         from . import platform_mac
         if platform_mac.OK:
             im = platform_mac.capture(x, y, w, h, below_window)
             if im is not None:
                 return im
+    elif IS_LINUX:
+        from . import platform_linux
+        LAST_SOURCE = "capture"
+        im = platform_linux.capture(x, y, w, h, exclude_self=bool(below_window))
+        if im is None:
+            LAST_SOURCE = "wallpaper"
+            im = platform_linux.wallpaper_crop(x, y, w, h)
+        if im is not None:
+            return im if im.size == (w, h) else im.resize((w, h))   # e.g. a 2× capture
+        LAST_SOURCE = ""
+        if below_window:
+            return None   # a Qt grab would bake our own window into its backdrop
     from PySide6.QtCore import QPoint
     from PySide6.QtGui import QGuiApplication
     scr = QGuiApplication.screenAt(QPoint(x + w // 2, y + h // 2)) or QGuiApplication.primaryScreen()
@@ -317,6 +341,8 @@ class LiquidBacking(QObject):
         if sys.platform == "darwin" and self.w.isVisible():
             from . import platform_mac
             below = platform_mac.window_number(self.w)
+        elif IS_LINUX and self.w.isVisible():
+            below = 1   # Linux: any non-zero asks the extension to leave our windows out
         pil = grab_screen(rect.x(), rect.y(), rect.width(), rect.height(), below)
         if pil is None:
             return
