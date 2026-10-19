@@ -85,6 +85,34 @@ The session never touches your real desktop:
   temporary directories. This also happens on Ctrl-C. A session whose launcher was
   SIGKILLed is cleaned up by the next start.
 
+### Test-helper extension (screenshots, window list)
+
+GNOME 46 refuses `org.gnome.Shell.Screenshot` to callers that are not allowlisted, so
+tests use a test-only extension, `dragshift-test@eteen12.github.io`
+(`tests/linux/ext/`). It owns `io.github.eteen12.DragShiftTest` on the session's private
+bus and offers `Version`, `Screenshot(path)`, `ScreenshotArea(x, y, w, h, path)`,
+`ListWindows`, `ActivateWindow(id)` and `GetPointer`.
+
+- `Session(helper=True)` (CLI: `--helper`) copies it into the session's temporary
+  `XDG_DATA_HOME` and enables it. The shared `gnome_session` fixture always does this.
+  Nothing installs it anywhere else, and it must never go on a real desktop.
+- `tests/linux/shell.py` is the client. The `shell_helper` fixture gives a ready
+  `ShellHelper`: `screenshot()`, `screenshot_area(...)`, `list_windows()`,
+  `wait_for_window(wm_class=...)`, `activate_window(id)`, `get_pointer()`.
+- The venv has no `gi`, so the client runs one bridge process (system `python3` with
+  `python3-gi`, inside the session environment) and exchanges JSON lines with it.
+- Screenshots are only written inside the session root (`/tmp/dragshift-session-*`); by
+  default they go to `<root>/tmp/screenshot-N.png`. Copy one out before the session stops.
+- `Session(helper=True)` waits until the helper answers. If it fails to load (say, a
+  syntax error), `start()` raises `HelperError` with the extension state, the shell log
+  lines that name it and the shell log tail.
+
+```sh
+uv run python -m tests.linux.session --helper -- gdbus call --session \
+  --dest io.github.eteen12.DragShiftTest --object-path /io/github/eteen12/DragShiftTest \
+  --method io.github.eteen12.DragShiftTest.ListWindows
+```
+
 ### The same tests in Docker (CI parity)
 
 `tests/linux/docker/run.sh` builds an `ubuntu:24.04` image with GNOME Shell 46, Xwayland,
