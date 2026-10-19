@@ -121,6 +121,27 @@ def test_get_pointer(shell_helper):
 
 
 @gnome
+def test_key_and_button_calls_return_once_the_seat_state_shows_them(shell_helper):
+    """#106: Key/Button reply only once the seat's modifier mask matches what is held, so
+    the next caller never sees a released Alt as still down (test_modifier_bits flaked)."""
+    shell = shell_helper
+    shell.move_pointer(321, 210)
+    try:
+        for _ in range(10):
+            for keyval, bit in ((0xffe9, 1 << 3), (0xffe1, 1 << 0), (0xffe3, 1 << 2)):
+                shell.key(keyval, True)
+                assert shell.get_pointer()[2] & bit
+                shell.key(keyval, False)
+                assert not shell.get_pointer()[2] & bit
+            shell.button(1, True)
+            assert shell.get_pointer()[2] & (1 << 8)
+            shell.button(1, False)
+            assert not shell.get_pointer()[2] & (1 << 8)
+    finally:
+        shell.release_all()
+
+
+@gnome
 def test_nautilus_is_listed_and_activate_window_focuses_it(gnome_session, shell_helper):
     """Acceptance: Nautilus shows up with wm_class org.gnome.Nautilus; ActivateWindow
     moves the focus between two of its windows."""
@@ -147,8 +168,10 @@ def test_nautilus_is_listed_and_activate_window_focuses_it(gnome_session, shell_
             assert shell.activate_window(target["id"]) is True
             assert _until(lambda: _focused(shell, target["id"])), f"{target['title']} not focused"
             assert not _focused(shell, other["id"])
-        top = [w for w in shell.list_windows() if w["id"] in (a["id"], b["id"])]
-        assert top[-1]["id"] == a["id"], "activated window is not on top of the stacking order"
+        def on_top():  # Mutter may restack a frame after the focus moved (seen under load)
+            top = [w for w in shell.list_windows() if w["id"] in (a["id"], b["id"])]
+            return top[-1]["id"] == a["id"]
+        assert _until(on_top), "activated window is not on top of the stacking order"
         assert shell.activate_window(2**63) is False
     finally:
         s.run(["nautilus", "-q"], timeout=30)

@@ -167,6 +167,18 @@ function keyvalFor(ch) {
     return 0x01000000 + cp;
 }
 
+// Seat modifier-mask bits that pressing a key or button sets (Clutter.ModifierType):
+// an input call waits until the seat's state shows them, see Input.settled().
+const M = Clutter.ModifierType;
+const KEY_BITS = {
+    0xffe1: M.SHIFT_MASK, 0xffe2: M.SHIFT_MASK, // Shift_L, Shift_R
+    0xffe3: M.CONTROL_MASK, 0xffe4: M.CONTROL_MASK, // Control_L, Control_R
+    0xffe9: M.MOD1_MASK, 0xffea: M.MOD1_MASK, // Alt_L, Alt_R
+};
+const BUTTON_BITS = {1: M.BUTTON1_MASK, 2: M.BUTTON2_MASK, 3: M.BUTTON3_MASK};
+const TRACKED_BITS = [...Object.values(KEY_BITS), ...Object.values(BUTTON_BITS)]
+    .reduce((a, b) => a | b, 0);
+
 // Virtual pointer and keyboard on this shell's own Clutter seat. Remembers what is held
 // so release() can let go of everything (a failed test must not leave Shift down).
 class Input {
@@ -198,6 +210,18 @@ class Input {
             this._keys.add(keyval);
         else
             this._keys.delete(keyval);
+    }
+
+    // Whether the seat's modifier mask has caught up with what is held: Mutter's input
+    // thread updates it asynchronously, and under load a stage update can come first.
+    // Without this a key release could still show as held to the next caller (#106).
+    settled() {
+        let want = 0;
+        for (const keyval of this._keys)
+            want |= KEY_BITS[keyval] ?? 0;
+        for (const button of this._buttons)
+            want |= BUTTON_BITS[button] ?? 0;
+        return (global.get_pointer()[2] & TRACKED_BITS) === want;
     }
 
     release() {
@@ -387,12 +411,14 @@ class Helper {
     }
 
     // Runs send(input); if it returns a target [x, y], first waits for the seat's pointer
-    // to get there. Then waits for two stage updates, so any event the input thread
-    // handed to the main loop meanwhile has been dispatched, and replies with reply().
+    // to get there, and always until the seat's modifier mask matches the held keys and
+    // buttons. Then waits for two stage updates, so any event the input thread handed to
+    // the main loop meanwhile has been dispatched, and replies with reply().
     _inject(invocation, send, reply = () => null) {
-        let target;
+        let target, input;
         try {
-            target = send(this._checkInput());
+            input = this._checkInput();
+            target = send(input);
         } catch (e) {
             invocation.return_dbus_error(e instanceof RefusedError
                 ? 'org.freedesktop.DBus.Error.AccessDenied'
@@ -421,7 +447,7 @@ class Helper {
         };
         const reached = () => {
             const [px, py] = global.get_pointer();
-            return !target || (px === target[0] && py === target[1]);
+            return (!target || (px === target[0] && py === target[1])) && input.settled();
         };
         // Fallback so a call never hangs: reply anyway after FLUSH_TIMEOUT_MS.
         timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1, () => {
