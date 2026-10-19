@@ -334,6 +334,31 @@ DragShift is not running, the same command starts it with the files.
 never into yours. It covers `gio mime`, the CLI with the app running and not running,
 and Files → Open With… → DragShift.
 
+### Files: right-click → Scripts → DragShift…
+
+`packaging/linux/nautilus-scripts/DragShift…` is a Nautilus script. The installer copies
+it to `${XDG_DATA_HOME:-~/.local/share}/nautilus/scripts/`, and its file name is the
+menu label. It runs `~/.local/bin/dragshift` with the selected files, so one menu opens
+at the pointer. If `~/.local/bin/dragshift` is missing, it runs `dragshift` from `PATH`,
+or `python -m dragshift` from a checkout named by `DRAGSHIFT_SRC`.
+- **Where the files come from.** Nautilus 46 and the desktop icons (DING) pass each
+  selected file as one argument, so names with spaces, unicode or newlines arrive
+  intact.
+  - Nautilus passes names relative to the folder and runs the script in that folder.
+    The script makes them absolute.
+  - Without arguments, the script decodes `NAUTILUS_SCRIPT_SELECTED_URIS`, which is
+    also exact. Then it tries `NAUTILUS_SCRIPT_SELECTED_FILE_PATHS`, one path per line,
+    where a name containing a newline is lost.
+- **With nothing selected,** the script runs the launcher without files, which brings
+  DragShift up. Nautilus 46 shows Scripts only when files are selected, though, not on a
+  folder's background.
+- **Tests:**
+  - `tests/test_nautilus_script.py` runs the script under sh, dash, bash and busybox
+    with a fake launcher. It also runs the whole chain to a fake socket.
+  - `tests/linux/test_nautilus_script.py` drives the menus in a session with the
+    pointer.
+  - Neither touches your own `~/.local/share/nautilus/scripts`.
+
 ## DOCX → PDF and LibreOffice
 
 On Linux, DOCX → PDF uses LibreOffice when it is installed (`soffice` or `libreoffice` on
