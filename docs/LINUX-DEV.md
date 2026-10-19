@@ -46,3 +46,13 @@ python3 -m venv .venv
 `DISPLAY` or `WAYLAND_DISPLAY` is needed. It also points `XDG_CONFIG_HOME`, `XDG_STATE_HOME`,
 `XDG_DATA_HOME` and `XDG_CACHE_HOME` at a temporary folder for the run, so tests never touch
 `~/.config/DragShift` or `~/.local`.
+
+## Self-test and log file
+
+```sh
+XDG_STATE_HOME=$(mktemp -d) QT_QPA_PLATFORM=offscreen .venv/bin/python -m dragshift --selftest
+```
+
+It prints `SELFTEST OK` and exits 0. On Linux the app logs to `$XDG_STATE_HOME/DragShift/log.txt`
+(default `~/.local/state/DragShift/log.txt`); a log over 1 MB is moved to `log.old.txt` at start.
+The temporary `XDG_STATE_HOME` above keeps the self-test's log out of your real one.
