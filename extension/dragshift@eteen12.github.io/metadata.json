@@ -1,0 +1,8 @@
+{
+  "uuid": "dragshift@eteen12.github.io",
+  "name": "DragShift",
+  "description": "Gives the DragShift app the pointer state and screen capture that Wayland withholds from ordinary apps, over the session D-Bus (io.github.eteen12.DragShift).",
+  "shell-version": ["46"],
+  "url": "https://github.com/eteen12/DragShift",
+  "version": 1
+}
