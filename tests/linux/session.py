@@ -54,6 +54,10 @@ SYSTEM_EXTENSIONS = Path("/usr/share/gnome-shell/extensions")
 # System extensions that must run from a private copy (see module docstring).
 PRIVATE_COPY_EXTENSIONS = ("ding@rastersoft.com",)
 UBUNTU_MODE = Path("/usr/share/gnome-shell/modes/ubuntu.json")
+# What Ubuntu's session mode enables. Without that mode (another distro, or an image without
+# the Yaru shell theme) the session enables the installed ones itself.
+UBUNTU_DEFAULT_EXTENSIONS = ("ubuntu-dock@ubuntu.com", "ubuntu-appindicators@ubuntu.com",
+                             "ding@rastersoft.com", "tiling-assistant@ubuntu.com")
 
 _PASSTHROUGH = ("PATH", "LANG", "LANGUAGE", "TZ", "TERM", "USER", "LOGNAME", "SHELL",
                 "VIRTUAL_ENV", "PYTHONPATH")
@@ -115,6 +119,17 @@ def gi_python() -> str | None:
                 capture_output=True).returncode == 0:
             return py
     return None
+
+
+def ubuntu_mode() -> bool:
+    """Whether `--mode=ubuntu` can boot: its mode file and the theme resource it names are
+    installed. gnome-shell-common ships the mode file, but the theme comes from
+    yaru-theme-gnome-shell; without it the shell dies at boot."""
+    try:
+        theme = json.loads(UBUNTU_MODE.read_text()).get("themeResourceName")
+    except (OSError, ValueError):
+        return False
+    return not theme or (UBUNTU_MODE.parent.parent / theme).is_file()
 
 
 def _pid_start(pid: int) -> str | None:
@@ -225,6 +240,7 @@ class Session:
         self.extensions = [Path(e) for e in extensions]
         self.timeout = timeout
         self.shell_args = list(shell_args)
+        self.mode: str | None = None  # GNOME Shell session mode: "ubuntu" or "user"
         self.keep = keep
         self.root: Path | None = None
         self.runtime_dir: Path | None = None
@@ -383,7 +399,8 @@ class Session:
             ("TMPDIR", "tmp"))}
         for d in dirs.values():
             d.mkdir()
-        ubuntu = UBUNTU_MODE.exists()
+        self.mode = "ubuntu" if ubuntu_mode() else "user"
+        ubuntu = self.mode == "ubuntu"
         env = {k: v for k, v in os.environ.items() if k in _PASSTHROUGH or k.startswith("LC_")}
         env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
         env.update({k: str(v) for k, v in dirs.items()})
@@ -422,7 +439,11 @@ class Session:
             if not (src / "metadata.json").is_file():
                 raise SessionError(f"not an extension directory: {src}")
             shutil.copytree(src, ext_dir / src.name, symlinks=True)
-        self._seed_dconf(dirs["XDG_CONFIG_HOME"], [e.name for e in self.extensions])
+        enabled = [e.name for e in self.extensions]
+        if not ubuntu:  # the user mode enables nothing by itself
+            enabled = [u for u in UBUNTU_DEFAULT_EXTENSIONS
+                       if (SYSTEM_EXTENSIONS / u).is_dir()] + enabled
+        self._seed_dconf(dirs["XDG_CONFIG_HOME"], enabled)
 
     def _seed_dconf(self, config_home: Path, enabled: list[str]) -> None:
         keyfiles = self.root / "dconf-seed"
@@ -469,7 +490,7 @@ class Session:
         w, h = self.size
         cmd = ["dbus-run-session", "--", "sh", "-c", wrapper, "sh", str(addr_file),
                "gnome-shell", "--headless", "--wayland",
-               *(["--mode=ubuntu"] if UBUNTU_MODE.exists() else []),
+               *(["--mode=ubuntu"] if self.mode == "ubuntu" else []),
                "--virtual-monitor", f"{w}x{h}", f"--wayland-display={self.wayland_display}",
                *self.shell_args]
         shell = self._spawn(cmd, dict(env, WAYLAND_DISPLAY=self.wayland_display))
