@@ -28,3 +28,9 @@ for _var, _sub in (("XDG_CONFIG_HOME", "config"), ("XDG_STATE_HOME", "state"),
 
 def pytest_unconfigure(config):
     shutil.rmtree(_XDG_ROOT, ignore_errors=True)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "gnome: needs the isolated headless GNOME Shell session "
+                   "(tests/linux/session.py); skipped when gnome-shell is missing")
