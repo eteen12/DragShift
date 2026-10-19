@@ -1,0 +1,14 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- Exported at /io/github/eteen12/DragShift under the well-known name
+     io.github.eteen12.DragShift on the session bus. The Python client lives in
+     dragshift/platform_linux.py; keep the names there in sync. -->
+<node>
+  <interface name="io.github.eteen12.DragShift">
+    <!-- DragShift version this extension was built from (version-name in metadata.json,
+         written by extension/build.sh). The app warns when it differs from its own. -->
+    <method name="Version">
+      <arg name="version" type="s" direction="out"/>
+    </method>
+  </interface>
+</node>

@@ -402,6 +402,26 @@ def mac_setup(qapp):
         pass
 
 
+def check_extension_version():
+    """Linux: say when DragShift's GNOME Shell extension is missing or was built from another
+    DragShift version. Asks on a daemon thread, so start-up never waits for the bus."""
+    import threading
+
+    def check():
+        from . import platform_linux
+        v = platform_linux.extension_version()
+        if v is None:
+            print("GNOME Shell extension not available: no global pointer or screen capture "
+                  "(install it, then log out and back in)", file=sys.stderr, flush=True)
+        elif v != VERSION:
+            print(f"warning: the GNOME Shell extension is from DragShift {v}, the app is "
+                  f"{VERSION}; reinstall to update it", file=sys.stderr, flush=True)
+
+    t = threading.Thread(target=check, name="extension-version", daemon=True)
+    t.start()
+    return t
+
+
 def send_to_running(payload: dict) -> bool:
     s = QLocalSocket()
     s.connectToServer(IPC_NAME)
@@ -473,6 +493,8 @@ def main(argv: list[str] | None = None) -> int:
     # already running? hand over and exit (instant: no second UI start-up)
     if send_to_running({"files": files} if files else {"show": "--quiet" not in argv}):
         return 0
+    if IS_LINUX:
+        check_extension_version()
     app = DragShiftApp(qapp)
     qapp.file_opened.connect(lambda f: app.queue_files([f]))
     if qapp.early_files:
