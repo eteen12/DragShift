@@ -62,6 +62,7 @@ from tests.linux import inject  # noqa: E402
 from tests.linux.files import Files  # noqa: E402
 from tests.linux.session import Session, SessionError, missing_tools  # noqa: E402
 from tests.linux.shell import ShellHelper  # noqa: E402
+from tests.linux.widgets import Widgets, WidgetsError  # noqa: E402
 
 OUT = ROOT / "e2e_linux_out"
 EXTENSION = ROOT / "extension"
@@ -245,6 +246,214 @@ def petal_xy(frame, n: int, i: int, r=R_PETAL) -> tuple[int, int]:
     return round(x + r * math.cos(m)), round(y - r * math.sin(m))
 
 
+# ------------------------------------------------------------------ tool windows (#61)
+# A tool driver (Scenario.tool) gets the glass window with tool_window("Compress"), then
+# clicks its controls by label with injected input:
+#
+#     w = tool_window("Compress")
+#     w.click("Target size", checked=True)
+#     w.click("200 KB", checked=True)
+#     w.click("Compress", primary=True)      # the window then closes and saves
+#
+# Controls are found over AT-SPI (tests/linux/widgets.py): Qt exports its tree on the
+# session's accessibility bus once toolkit accessibility is on, which the first
+# tool_window() turns on. A checkable QPushButton is a "check box" there, a QLineEdit a
+# "text" (or "password text"), the image canvas (ImageView) a "filler". Their boxes are
+# relative to the window, so the frame from ListWindows is added. Without AT-SPI only the
+# primary button still works, through Enter (ToolWindow._enter), and the canvas comes from
+# e2e_windows._canvas's heuristic.
+TOOL_WAIT = 12.0                 # s for a tool window to appear after the drop
+GLASS_SUFFIX = " — DragShift"    # GlassWindow titles: "<title> — DragShift", "<title> (2) — …"
+TEXT_ROLES = ("text", "password text", "entry")
+_WIDGETS: dict = {}              # "w": the Widgets client once accessibility is on, or None
+
+
+def glass_windows() -> list[dict]:
+    """DragShift's glass windows (tools, Settings, Welcome), by title and app id."""
+    return [w for w in C.shell.list_windows()
+            if w["wm_class"] == LINUX_APP_ID and w["title"].endswith(GLASS_SUFFIX)]
+
+
+def widgets() -> Widgets | None:
+    """The AT-SPI client, with toolkit accessibility turned on in the session (once), or
+    None when the session has no accessibility bus."""
+    if "w" not in _WIDGETS:
+        w = Widgets(C.session)
+        try:
+            w.enable()
+            _WIDGETS["w"] = w
+        except WidgetsError as e:
+            log("AT-SPI unavailable, tool drivers fall back to the keyboard:", e)
+            _WIDGETS["w"] = None
+    return _WIDGETS["w"]
+
+
+class ToolWin:
+    """A DragShift glass window being driven: its ListWindows record and its widgets."""
+
+    def __init__(self, rec: dict):
+        self.rec = rec
+
+    @property
+    def title(self) -> str:
+        return self.rec["title"]
+
+    @property
+    def frame(self) -> tuple:
+        return tuple(self.rec["frame"])
+
+    def is_open(self) -> bool:
+        return any(w["id"] == self.rec["id"] for w in C.shell.list_windows())
+
+    def items(self) -> list[dict]:
+        """The showing widgets, with `box` in stage coordinates (x, y, w, h)."""
+        w = widgets()
+        if w is None:
+            raise AssertionError(f"no AT-SPI: can't find the controls of {self.title!r}")
+        x0, y0 = self.frame[:2]
+        out = []
+        for it in w.find(self.title):
+            x, y, bw, bh = it["box"]
+            out.append(dict(it, box=(x0 + x, y0 + y, bw, bh)))
+        return out
+
+    def find(self, name: str, role: str | None = None, timeout: float = 3.0) -> dict:
+        """The first showing, enabled widget named exactly `name` (and of `role`)."""
+        end = time.monotonic() + timeout
+        while True:
+            found = [it for it in self.items() if it["name"] == name and it["enabled"]
+                     and (role is None or it["role"] == role)]
+            if found:
+                return found[0]
+            if time.monotonic() > end:
+                raise AssertionError(f"no {role or 'widget'} {name!r} in {self.title!r}")
+            time.sleep(0.2)
+
+    def activate(self):
+        """Focus the window (the edge case where present() didn't, #40)."""
+        if not next((w["focused"] for w in C.shell.list_windows() if w["id"] == self.rec["id"]),
+                    False):
+            C.shell.activate_window(self.rec["id"])
+            wait(lambda: any(w["focused"] for w in C.shell.list_windows()
+                             if w["id"] == self.rec["id"]), 2)
+
+    def click(self, name: str, role: str | None = None, checked: bool | None = None,
+              primary: bool = False, pause: float = 0.3):
+        """Glide to the widget named `name` and click it. checked: wait until a toggle
+        shows that state. primary: the footer's primary button; without AT-SPI it is
+        pressed with Enter instead."""
+        self.activate()
+        if primary:
+            self.shot()
+        if primary and widgets() is None:
+            inject.press(C.shell, "Return")
+            time.sleep(pause)
+            return
+        it = self.find(name, role or ("push button" if primary else None))
+        x, y, w, h = it["box"]
+        inject.click(C.shell, x + w // 2, y + h // 2, dur=0.25)
+        if checked is not None and not wait(
+                lambda: any(i["name"] == name and i["checked"] == checked for i in self.items()), 2,
+                0.1):
+            raise AssertionError(f"{name!r} in {self.title!r} did not become "
+                                 f"{'checked' if checked else 'unchecked'}")
+        time.sleep(pause)
+
+    def shot(self):
+        """Evidence: shots/NN_<title>_tool.png, the window as it is about to save (click()
+        takes it before the primary button)."""
+        shot(f"{len(RESULTS) + 1:02d}_{safe(self.title.removesuffix(GLASS_SUFFIX))}_tool")
+
+    def canvas(self) -> tuple[int, int, int, int]:
+        """(x0, y0, x1, y1) of the image canvas: the largest "filler" (ImageView), or
+        e2e_windows._canvas's guess from the frame without AT-SPI."""
+        if widgets() is not None:
+            fill = [it for it in self.items() if it["role"] == "filler"]
+            if fill:
+                x, y, w, h = max(fill, key=lambda it: it["box"][2] * it["box"][3])["box"]
+                return x, y, x + w, y + h
+        x, y, w, h = self.frame
+        return x + 60, y + 80, x + w - 60, y + int(h * 0.6)
+
+    def drag(self, start: tuple[int, int], end: tuple[int, int], dur: float = 0.5):
+        """Press at `start`, glide to `end`, release (a stroke on the canvas)."""
+        self.activate()
+        inject.glide(C.shell, *start, dur=0.25)
+        C.shell.button(1, True)
+        try:
+            time.sleep(0.05)
+            inject.glide(C.shell, *end, dur=dur)
+            time.sleep(0.05)
+        finally:
+            C.shell.button(1, False)
+        time.sleep(0.2)
+
+    def type_into(self, index: int, text: str):
+        """Click the index-th text field (tree order) and type `text` (#62: Protect)."""
+        fields = [it for it in self.items() if it["role"] in TEXT_ROLES]
+        if len(fields) <= index:
+            raise AssertionError(f"{self.title!r} has {len(fields)} text field(s)")
+        x, y, w, h = fields[index]["box"]
+        inject.click(C.shell, x + w // 2, y + h // 2, dur=0.25)
+        time.sleep(0.15)
+        inject.type_text(C.shell, text)
+
+    def wait_closed(self, timeout: float = 5.0):
+        """The window went away (a tool closes itself when it starts saving)."""
+        if not wait(lambda: not self.is_open(), timeout, 0.1):
+            raise AssertionError(f"{self.title!r} is still open")
+
+
+def tool_window(title: str, timeout: float = TOOL_WAIT) -> ToolWin:
+    """The glass window titled `title` (e.g. "Compress", "Crop Image") once Mutter has
+    placed it, it is focused and (with AT-SPI) its widgets are exported."""
+    want = re.compile(rf"{re.escape(title)}( \(\d+\))?{re.escape(GLASS_SUFFIX)}")
+    found = wait(lambda: [w for w in glass_windows() if want.fullmatch(w["title"])], timeout, 0.1)
+    if not found:
+        raise AssertionError(f"no {title!r} window within {timeout:.0f} s "
+                             f"(windows: {[w['title'] for w in C.shell.list_windows()]})")
+    win = ToolWin(found[-1])
+    last, stable, end = None, 0, time.monotonic() + 2.0       # Mutter's placement settles
+    while stable < 3 and time.monotonic() < end:
+        rec = next((w for w in glass_windows() if w["id"] == win.rec["id"]), None)
+        if rec is None:
+            raise AssertionError(f"{win.title!r} closed")
+        stable = stable + 1 if tuple(rec["frame"]) == last else 0
+        last, win.rec = tuple(rec["frame"]), rec
+        time.sleep(0.05)
+    win.activate()
+    if widgets() is not None:
+        end = time.monotonic() + 5.0
+        while True:          # Qt registers on the bus a moment after accessibility is on
+            try:
+                if win.items():
+                    break
+            except WidgetsError:
+                if time.monotonic() > end:
+                    raise
+            time.sleep(0.2)
+    return win
+
+
+def close_tool_windows():
+    """Close every DragShift glass window left open (after a failure): Escape in it, then
+    the ✕ button's AT-SPI action."""
+    for rec in glass_windows():
+        win = ToolWin(rec)
+        try:
+            C.shell.activate_window(rec["id"])
+            time.sleep(0.2)
+            inject.press(C.shell, "Escape")
+            if wait(lambda: not win.is_open(), 2, 0.1):
+                continue
+            if widgets() is not None:
+                widgets().press(win.title, "✕")
+            if not wait(lambda: not win.is_open(), 2, 0.1):
+                log(f"could not close {win.title!r}")
+        except Exception as e:
+            log(f"closing {win.title!r} failed:", e)
+
+
 # ------------------------------------------------------------------ sources
 def folder_of(where: str) -> Path:
     return C.exp if where == "nautilus" else C.desk
@@ -402,6 +611,7 @@ def run(name: str, where: str, files: list[str], ring: str, label: str, verify, 
             time.sleep(0.1)
             C.shell.release_all()
             wait(lambda: not menus(), 3, 0.1)
+            close_tool_windows()                 # a tool window the driver left open
         except Exception as e2:
             log("cleanup after the failure failed:", e2)
     dt = time.time() - t0
@@ -581,6 +791,7 @@ def main(argv=None) -> int:
     LOG = open(OUT / "log.txt", "w", encoding="utf-8")
     T0 = time.time()
     RESULTS.clear()
+    _WIDGETS.clear()
     missing = missing_tools()
     build = Path(tempfile.mkdtemp(prefix="dragshift-e2e-ext-"))
     rec = None

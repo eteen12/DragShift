@@ -733,6 +733,34 @@ uv run pytest tests/linux/test_e2e_smoke.py           # the runner with --only "
   helpers of `e2e_linux` can be imported from it. A module that fails to import, has no
   `SCENARIOS` list or repeats a scenario name stops the run with exit code 1. `--list`
   prints the scenarios grouped by file.
+- Tool windows (#61): a driver gets the glass window with `tool_window(title)` and clicks
+  its controls by label with injected input. The image tools are in
+  `demo/e2e_linux_image_tools.py`:
+
+  ```python
+  from e2e_linux import tool_window
+
+  def drive_compress():
+      w = tool_window("Compress")             # "<title> — DragShift", placed and focused
+      w.click("Target size", checked=True)    # waits until the toggle shows it
+      w.click("200 KB", checked=True)
+      w.click("Compress", primary=True)       # shots/NN_Compress_tool.png first
+      w.wait_closed()
+  ```
+
+  - **Other `ToolWin` methods:** `canvas()` (the image area), `drag(start, end)`,
+    `type_into(i, text)` (the i-th text field), `items()`, `find(name, role)` and `shot()`.
+  - **How controls are found:** over AT-SPI, through `tests/linux/widgets.py`. It is a
+    one-shot python3-gi bridge, like the Files lookups.
+    - Qt exports its widgets only while `org.a11y.Status.IsEnabled` is on. The first
+      `tool_window()` turns it on, on the session's private bus.
+    - Boxes come in window coordinates, and the frame from `ListWindows` is added to them.
+    - In Qt's tree, toggle-row buttons are `check box`, footer buttons are `push button`,
+      the image canvas is a `filler` and line edits are `text`.
+  - **Without an accessibility bus:** only the primary button still works, through Enter
+    (`ToolWindow._enter`).
+  - **After a failure:** `run()` closes any glass window left open, with Escape and then
+    the ✕ button's AT-SPI action.
 - The sample files, `new_files` and the `v_*` verifiers live in `demo/e2e_common.py`, which
   the Windows and macOS runners import too.
 - In the Docker image the repo is read-only, so pass `--out` on a writable mount:
