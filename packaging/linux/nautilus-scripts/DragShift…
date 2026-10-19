@@ -1,0 +1,101 @@
+#!/bin/sh
+# Files (Nautilus) script: right-click → Scripts → DragShift… hands the selected files to
+# DragShift, which opens its menu at the pointer, one menu for all of them. The desktop's
+# (DING) Scripts menu runs it too. install-linux.sh (#66) copies it to
+# ${XDG_DATA_HOME:-~/.local/share}/nautilus/scripts/; its file name is the menu label.
+#
+# Where the selection comes from, exact sources first:
+# 1. The arguments. Nautilus passes each selected file as one argument, relative to the
+#    folder it runs the script in (or absolute), and DING passes absolute paths. An
+#    argument is exact: spaces, newlines and any other character arrive intact.
+# 2. NAUTILUS_SCRIPT_SELECTED_URIS, one percent-encoded URI per line, also exact. Only
+#    file: URIs are local files.
+# 3. NAUTILUS_SCRIPT_SELECTED_FILE_PATHS, one path per line. A name that contains a
+#    newline cannot be told apart here and is dropped; 1 and 2 have no such limit.
+# Nautilus passes no arguments when a selected file has no local path (Trash, Recent, an
+# unmounted network place); then nothing usable is selected.
+#
+# With nothing selected (the folder's background menu) DragShift is only brought up: the
+# launcher without files sends {"show": true} to the running app.
+#
+# Which DragShift: ~/.local/bin/dragshift (the installer's launcher), else `dragshift` on
+# PATH, else `python -m dragshift` from a checkout named by DRAGSHIFT_SRC (development).
+
+# file:///a%20b → path=/a b. Returns 1 for anything that is not a local file: URI.
+uri_to_path() {
+    case $1 in
+        file:///*) s=${1#file://} ;;
+        file://localhost/*) s=${1#file://localhost} ;;
+        *) return 1 ;;
+    esac
+    esc=                            # the path as a printf %b argument
+    while [ -n "$s" ]; do
+        lit=${s%%[%\\]*}            # up to the next % or backslash
+        esc=$esc$lit
+        s=${s#"$lit"}
+        case $s in
+            %[0-9A-Fa-f][0-9A-Fa-f]*)
+                h=${s#%}; s=${h#??}; h=${h%"$s"}
+                d=$((0x$h))
+                esc="$esc\\0$((d / 64))$((d / 8 % 8))$((d % 8))" ;;
+            \\*) esc="$esc\\\\"; s=${s#?} ;;
+            ?*) esc="$esc%"; s=${s#?} ;;
+        esac
+    done
+    path=$(printf '%b/' "$esc")     # the / keeps a trailing newline
+    path=${path%/}
+}
+
+if [ $# -eq 0 ]; then
+    while IFS= read -r uri; do
+        uri_to_path "$uri" && set -- "$@" "$path"
+    done <<EOF
+${NAUTILUS_SCRIPT_SELECTED_URIS-}
+EOF
+fi
+if [ $# -eq 0 ]; then
+    while IFS= read -r p; do
+        [ -n "$p" ] && [ -e "$p" ] && set -- "$@" "$p"
+    done <<EOF
+${NAUTILUS_SCRIPT_SELECTED_FILE_PATHS-}
+EOF
+fi
+
+# Absolute paths: the app resolves relative ones against its own working directory, and
+# skips any argument that starts with "-".
+for f do
+    shift
+    case $f in
+        /*) ;;
+        *) f=$PWD/$f ;;
+    esac
+    set -- "$@" "$f"
+done
+
+# Don't keep the folder busy: a DragShift started from here runs on (a USB stick could
+# not be unmounted while the app's working directory is on it).
+cd "$HOME" 2>/dev/null || cd /
+
+launcher=$HOME/.local/bin/dragshift
+if [ -x "$launcher" ]; then
+    exec "$launcher" "$@"
+fi
+if command -v dragshift >/dev/null 2>&1; then
+    exec dragshift "$@"
+fi
+if [ -n "${DRAGSHIFT_SRC-}" ] && [ -d "$DRAGSHIFT_SRC/dragshift" ]; then
+    py=python3
+    if [ -x "$DRAGSHIFT_SRC/.venv/bin/python" ]; then
+        py=$DRAGSHIFT_SRC/.venv/bin/python
+    fi
+    PYTHONPATH="$DRAGSHIFT_SRC${PYTHONPATH:+:$PYTHONPATH}"
+    export PYTHONPATH
+    exec "$py" -m dragshift "$@"
+fi
+
+msg="DragShift is not installed: no ~/.local/bin/dragshift and no dragshift on PATH."
+echo "$msg" >&2
+if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a DragShift "DragShift" "$msg"
+fi
+exit 1
