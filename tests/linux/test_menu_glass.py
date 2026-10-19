@@ -48,6 +48,11 @@ BUDGET_MS = 40                    # SPEC 4.6: capture -> PNG -> D-Bus -> PIL, pe
 # The capture's median at 200 %: the shell paints and PNG-encodes 800x800 device pixels,
 # measured 50-67 ms (#39); a regression guard until the extension encodes at logical size.
 HIDPI_CAPTURE_MS = 100
+# #123: Shift -> refracted glass on screen, median, with the file entered at once (GNOME).
+# Before #123: 268 ms at 100 %, 407 ms at 200 %; after: 89 and 153 ms at a load average of
+# 2-4. Checked only on a host that isn't busy: at a load average of 12 (other sessions
+# running) the 200 % capture alone went from 59 to 89 ms and the median to 210 ms.
+GLASS_MS = {1: 120, 2: 200}
 RED = (220, 30, 30)
 
 
@@ -288,7 +293,8 @@ def test_real_app_latency_from_shift_to_glass(env, pictures):  # noqa: F811
     """Shift+drags with the real app, from Files and from the desktop: the time from the
     Shift press to the first frame and to the refracted glass on screen, read from the
     app's own log lines. The capture stays within the spec's 40 ms at 100 % (not at
-    200 %, see HIDPI_CAPTURE_MS); the numbers are recorded on #39."""
+    200 %, see HIDPI_CAPTURE_MS); the numbers are recorded on #39. The refracted glass
+    of the file's own ring is up within GLASS_MS of the Shift press (#123)."""
     files, folder, _ = pictures
     desk = files.put_on_desktop({f"Desk {time.monotonic_ns()}.png": _colourful(3)})[0]
     app = App(env, "--quiet")
@@ -340,6 +346,12 @@ def test_real_app_latency_from_shift_to_glass(env, pictures):  # noqa: F811
     assert all(r["source"] == "capture" for r in rows)
     assert all(r["first_frame_ms"] < r["glass_ms"] for r in rows)   # frost first, then glass
     assert summary["capture_ms"]["median"] < (BUDGET_MS if env.scale == 1 else HIDPI_CAPTURE_MS)
+    load = os.getloadavg()[0]
+    if load < (os.cpu_count() or 1) / 2:
+        assert summary["shift_to_glass_ms"]["median"] < GLASS_MS[env.scale], summary
+    else:
+        print(f"host load average {load:.1f}: Shift -> glass not checked against "
+              f"{GLASS_MS[env.scale]} ms")
 
 
 # ------------------------------------------------------------------ no extension

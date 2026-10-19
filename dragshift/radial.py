@@ -65,8 +65,31 @@ def angles(n: int, i: int) -> tuple[float, float]:
 
 
 # ---------------------------------------------------------------- background render
+_SDFS: dict = {}   # petal count -> the menu's signed distance field (read-only)
+
+
+def menu_sdf(n: int):
+    """The menu's shape for n petals: the hub and the ring of petals as one signed distance
+    field. It depends on n only, so it is made once (the petals in one folded pass, see
+    liquid.sdf_ring_sector) and then shared, read-only, by every render for that n."""
+    sdf = _SDFS.get(n)
+    if sdf is None:
+        from . import liquid
+        c = SIZE / 2
+        fields = [liquid.sdf_circle(SIZE, SIZE, c, c, R_HUB)]
+        if n > 0:
+            a0, a1 = angles(n, 0)
+            fields.append(liquid.sdf_ring_sector(SIZE, SIZE, c, c, R_IN, R_OUT, a0, a1, CORNER,
+                                                 count=n))
+        sdf = liquid.union(*fields)
+        sdf.flags.writeable = False
+        _SDFS[n] = sdf
+    return sdf
+
+
 class _RenderSig(QObject):
     done = Signal(int, int, QImage, bool)   # serial, petal count, image, is_light
+    failed = Signal(int)                    # serial (Linux: the next render may start)
 
 
 class _RenderJob(QRunnable):
@@ -78,12 +101,7 @@ class _RenderJob(QRunnable):
     def run(self):
         try:
             from . import liquid
-            c = SIZE / 2
-            fields = [liquid.sdf_circle(SIZE, SIZE, c, c, R_HUB)]
-            for i in range(self.n):
-                a0, a1 = angles(self.n, i)
-                fields.append(liquid.sdf_ring_sector(SIZE, SIZE, c, c, R_IN, R_OUT, a0, a1, CORNER))
-            sdf = liquid.union(*fields)
+            sdf = menu_sdf(self.n)
             img, light = liquid.render(self.backdrop, sdf, liquid.GlassStyle())
             sh = liquid.shadow(sdf, spread=26, opacity=0.42 if light else 0.30, offset=(0, 8))
             sh.alpha_composite(img)
@@ -94,6 +112,10 @@ class _RenderJob(QRunnable):
         except Exception:  # pragma: no cover - fall back to the painted glass
             import traceback
             traceback.print_exc()
+            try:
+                self.sig.failed.emit(self.serial)
+            except RuntimeError:
+                pass
 
 
 class RadialMenu(QWidget):
@@ -121,6 +143,9 @@ class RadialMenu(QWidget):
             self.setWindowTitle(MENU_TITLE)
             self._popup_t = 0.0
             self._frames = [None, True]
+            self._frost: dict[tuple, QImage] = {}   # (petals, dpr) -> frost (_linux_frost)
+            self._waiting: list[int] = []   # petal counts still to render (_linux_queue)
+            self._running = 0               # this popup's renders in the pool
             self._watch: threading.Event | None = None   # set = stop the pointer watch
             self._watch_serial = 0
             self._menu_rect = QRect()
@@ -181,6 +206,9 @@ class RadialMenu(QWidget):
         # snapshot what's underneath *before* we appear
         self._serial += 1
         self.liquid = {}
+        if IS_LINUX:
+            self._frost = {}                      # this popup's backdrop: a new frost
+            self._waiting, self._running = [], 0  # and renders (_linux_queue)
         try:
             if sys.platform == "darwin":
                 # macOS captures "below the drag window": the drag picture never gets in
@@ -245,8 +273,11 @@ class RadialMenu(QWidget):
         else:
             self.paths, self.rings, self.ring_names = [], {}, []
             self.hub_text = "Drop here"
-            for n in (4, 7):  # most common rings: render speculatively
-                self._render(n)
+            if IS_LINUX:
+                self._linux_queue((4, 7))
+            else:
+                for n in (4, 7):  # most common rings: render speculatively
+                    self._render(n)
         self._t = 0.0
         if IS_LINUX:
             self._linux_place(tl)
@@ -388,6 +419,7 @@ class RadialMenu(QWidget):
         self.frame.stop()
         if IS_LINUX:
             self._linux_click_watch(False)
+            self._waiting = []      # the renders not started yet are no longer needed
         if QWidget.mouseGrabber() is self:
             self.releaseMouse()
         super().hideEvent(e)
@@ -399,13 +431,35 @@ class RadialMenu(QWidget):
         job = _RenderJob(self._serial, n, self._raw_backdrop)
         from .util import keep, release
         job.sig.done.connect(lambda *a, j=job: (release(j), self._rendered(*a)))
+        if IS_LINUX:
+            job.sig.failed.connect(lambda s, j=job: (release(j), self._linux_render_over(s)))
         QThreadPool.globalInstance().start(keep(job))
+
+    def _linux_start(self, n: int):
+        if n not in self.liquid:
+            self._render(n)
+            self._running += n in self.liquid
+
+    def _linux_render_over(self, serial: int):
+        if serial == self._serial:
+            self._running -= 1
+            self._linux_queue(())
+
+    def _linux_queue(self, sizes):
+        """Linux (#123): render these petal counts one after the other. The renders share
+        the GIL with each other and with the GUI thread: two at once take about twice as
+        long each, so one at a time has the one needed first ready soonest."""
+        self._waiting += [n for n in sizes if n not in self._waiting]
+        while self._waiting and not self._running:
+            self._linux_start(self._waiting.pop(0))
 
     def _rendered(self, serial: int, n: int, img: QImage, light: bool):
         if serial == self._serial:
             self.liquid[n] = img
             self.is_light = light
             self.update()
+            if IS_LINUX:
+                self._linux_render_over(serial)
 
     def _load(self, paths: list[str]):
         self.paths = paths
@@ -413,8 +467,17 @@ class RadialMenu(QWidget):
         self.ring_names = list(self.rings)
         self.ring_idx = 0
         self.hub_text = self.describe(paths)
-        for items in self.rings.values():
-            self._render(len(items))
+        if IS_LINUX:
+            # #123: the speculative sizes that haven't started are dropped; the ring shown
+            # first starts at once, even beside one still running, the others after it
+            sizes = [len(v) for v in self.rings.values()]
+            self._waiting = []
+            if sizes:
+                self._linux_start(sizes[0])
+            self._linux_queue(sizes[1:])
+        else:
+            for items in self.rings.values():
+                self._render(len(items))
         self.spring = [0.0] * len(self.items)
         if IS_LINUX:  # what a drop (or click mode) loaded: tests/linux/test_menu_drop.py
             rings = ", ".join(f"{k} {len(v)}" for k, v in self.rings.items()) or "none"
@@ -608,6 +671,8 @@ class RadialMenu(QWidget):
 
         if have_liquid:
             p.drawImage(0, 0, img)
+        elif IS_LINUX:
+            p.drawImage(0, 0, self._linux_frost(n))
         else:
             self._paint_fallback(p, c, n)
         if IS_LINUX and not self._frames[1]:
@@ -624,6 +689,26 @@ class RadialMenu(QWidget):
                               fg, shadow_col)
 
         self._paint_hub(p, c, fg, fg_dim, shadow_col)
+
+    def _linux_frost(self, n: int) -> QImage:
+        """The painted frost for n petals, drawn once per popup into an image that each
+        frame then draws like the liquid glass (#123). Painting it afresh took 10-14 ms a
+        frame at 100 % and 21-23 ms at 200 %, at 60 fps until the glass arrived: the GUI
+        thread held the GIL nearly all the time, and the glass renders, which need it
+        too, crawled. Drawn once and blitted, a frame takes about a millisecond."""
+        dpr = self.devicePixelRatioF()
+        img = self._frost.get((n, dpr))
+        if img is None:
+            img = QImage(round(SIZE * dpr), round(SIZE * dpr), QImage.Format_ARGB32_Premultiplied)
+            img.setDevicePixelRatio(dpr)
+            img.fill(Qt.transparent)
+            p = QPainter(img)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            self._paint_fallback(p, QPointF(SIZE / 2, SIZE / 2), n)
+            p.end()
+            self._frost[(n, dpr)] = img
+        return img
 
     def _paint_fallback(self, p: QPainter, c: QPointF, n: int):
         hub = QPainterPath()

@@ -47,15 +47,21 @@ def sdf_circle(w: int, h: int, cx: float, cy: float, r: float) -> np.ndarray:
 
 
 def sdf_ring_sector(w: int, h: int, cx: float, cy: float, r0: float, r1: float,
-                    a0: float, a1: float, round_r: float = 10.0) -> np.ndarray:
-    """Annular sector between angles a0..a1 (degrees, CCW from +x, y up) with rounded corners."""
+                    a0: float, a1: float, round_r: float = 10.0, count: int = 1) -> np.ndarray:
+    """Annular sector between angles a0..a1 (degrees, CCW from +x, y up) with rounded corners.
+
+    count > 1: the union of `count` such sectors spaced evenly around the centre (the first
+    one at a0..a1), in one pass: the angle is folded into the nearest sector, whose distance
+    is the smallest because a sector's distance grows with the angle from its middle. The
+    same field as union() of `count` rotated sectors, at the cost of one."""
     ys, xs = np.mgrid[0:h, 0:w].astype(np.float32) + 0.5
     dx, dy = xs - cx, cy - ys
     rad = np.hypot(dx, dy)
     mid = math.radians((a0 + a1) / 2)
     half = math.radians((a1 - a0) / 2)
+    span = 2 * np.pi / count                # count = 1: the usual wrap to [-pi, pi)
     ang = np.arctan2(dy, dx) - mid
-    ang = (ang + np.pi) % (2 * np.pi) - np.pi
+    ang = (ang + span / 2) % span - span / 2
     # distance to the radial (straight) sides: perpendicular distance in the rotated frame
     side = rad * np.sin(np.abs(ang) - half)
     side = np.where(np.abs(ang) - half > np.pi / 2, rad, side)
