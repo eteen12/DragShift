@@ -55,6 +55,7 @@ Tests marked `gnome` run inside a throwaway headless GNOME Shell 46 session star
 normal Ubuntu desktop already has. Without them, the `gnome` tests are skipped.
 
 ```sh
+uv run pytest -m "not gnome"                # quick loop: unit tests only, no session
 uv run pytest -m gnome tests/linux          # session tests only
 uv run python -m tests.linux.session -- nautilus --new-window /tmp   # run a command inside
 uv run python -m tests.linux.session        # print the session env, Ctrl-C to stop
