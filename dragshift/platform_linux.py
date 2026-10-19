@@ -395,12 +395,23 @@ def wallpaper_crop(x: int, y: int, w: int, h: int):
     (x, y); any part of the rect off that monitor is the background colour. No picture
     (`none`, a missing or undecodable file) gives a solid `primary-color`. None only when
     the GNOME settings can't be read (not GNOME) or there is no screen to map onto."""
-    import os
     from PIL import Image
     s = _read_settings()
     mon = _monitor_at(x, y)
     if s is None or mon is None or w <= 0 or h <= 0:
         return None
+    full, bg = _wallpaper(s, mon)
+    out = Image.new("RGB", (w, h), bg)
+    if full is not None:
+        out.paste(full, (mon[0] - x, mon[1] - y))
+    return out
+
+
+def _wallpaper(s: dict, mon: tuple[int, int, int, int]):
+    """(the picture as GNOME draws it on monitor `mon`, or None when there is none; the
+    background colour) for the settings `s`. Decoded once into _WALL_CACHE; a decode
+    already running (warm_wallpaper) is waited for, not repeated."""
+    import os
     mx, my, mw, mh = mon
     bg = _parse_color(s.get("primary-color", ""))
     dark = s.get("color-scheme") == "prefer-dark" and s.get("picture-uri-dark")
@@ -409,21 +420,49 @@ def wallpaper_crop(x: int, y: int, w: int, h: int):
         st = os.stat(path) if path and s.get("picture-options") != "none" else None
     except OSError:
         st = None    # deleted file or dangling symlink
-    key = (path, st and st.st_mtime_ns, st and st.st_size, bg, mon)
-    if st is not None and key not in _WALL_CACHE:
-        if len(_WALL_CACHE) >= 4:
-            _WALL_CACHE.clear()
-        _WALL_CACHE[key] = _decode_zoom(path, mw, mh, bg)
-    full = _WALL_CACHE.get(key)
-    out = Image.new("RGB", (w, h), bg)
-    if full is not None:
-        out.paste(full, (mx - x, my - y))
-    return out
+    if st is None:
+        return None, bg
+    key = (path, st.st_mtime_ns, st.st_size, bg, mon)
+    with _WALL_LOCK:
+        if key not in _WALL_CACHE:
+            if len(_WALL_CACHE) >= 4:
+                _WALL_CACHE.clear()
+            _WALL_CACHE[key] = _decode_zoom(path, mw, mh, bg)
+        return _WALL_CACHE[key], bg
+
+
+def warm_wallpaper():
+    """Decode the wallpaper of every monitor into wallpaper_crop's cache on a background
+    thread, so the first menu that falls back to the wallpaper doesn't pay for the decode
+    (160-220 ms for a 12 MP JPEG; a cached crop takes ~3 ms). Call on the GUI thread: the
+    settings and the screens are read here, the thread only decodes (PIL, no Qt objects).
+    Returns the thread, or None when there is nothing to warm (not GNOME, no screens)."""
+    import gc
+    from PySide6.QtGui import QGuiApplication
+    s = _read_settings()
+    if s is None or not isinstance(QGuiApplication.instance(), QGuiApplication):
+        return None
+    mons = [scr.geometry().getRect() for scr in QGuiApplication.screens()]
+    if not mons:
+        return None
+    gc.collect()     # no Qt garbage left for a collection on the thread to free (#88)
+
+    def work():
+        t0 = time.perf_counter()
+        for mon in mons:
+            _wallpaper(s, mon)
+        print(f"wallpaper: cache warmed for {len(mons)} monitor(s) in "
+              f"{(time.perf_counter() - t0) * 1e3:.0f} ms", flush=True)
+
+    t = threading.Thread(target=work, name="wallpaper-warm", daemon=True)
+    t.start()
+    return t
 
 
 # Wallpaper under a monitor, decoded once at monitor size: (path, mtime, size, colour,
 # monitor geometry) -> image, or None when the file didn't decode.
 _WALL_CACHE: dict = {}
+_WALL_LOCK = threading.Lock()
 WALLPAPER_KEYS = ("picture-uri", "picture-uri-dark", "picture-options", "primary-color")
 
 

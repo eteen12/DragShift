@@ -176,6 +176,9 @@ class DragShiftApp(QObject):
                 flush=True))
         self.watcher.hide_menu.connect(self.menu.close_menu)
         self.watcher.start()
+        if IS_LINUX:  # the menu's wallpaper fallback, decoded now rather than on its first popup
+            from . import platform_linux
+            platform_linux.warm_wallpaper()
 
         # files handed over by "Send to", the right-click menu, or a second launch
         self._pending: list[str] = []
