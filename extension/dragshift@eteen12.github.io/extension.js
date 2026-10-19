@@ -168,6 +168,26 @@ class DragShiftService {
             return [];
         return global.get_window_actors().filter(a => a.get_meta_window()?.get_pid() === pid);
     }
+
+    // ------------------------------------------------------------ GetWorkArea (#42)
+    // The work area (the monitor minus the top bar and a fixed dock) of the monitor that
+    // contains (x, y), else of the primary monitor, in stage (logical) pixels. Toasts
+    // stack at its bottom right. A native Wayland client can't learn it: Qt's
+    // availableGeometry() is the whole monitor there. Read-only, no side effects.
+    GetWorkAreaAsync([x, y], invocation) {
+        const layout = Main.layoutManager;
+        let index = layout.monitors.findIndex(m =>
+            x >= m.x && x < m.x + m.width && y >= m.y && y < m.y + m.height);
+        if (index < 0)
+            index = layout.primaryIndex;
+        if (index < 0) {
+            invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', 'no monitor');
+            return;
+        }
+        const r = layout.getWorkAreaForMonitor(index);
+        invocation.return_value(new GLib.Variant('(iiii)', [r.x, r.y, r.width, r.height]));
+    }
+    // ------------------------------------------------------------ end GetWorkArea
 }
 
 // ---------------------------------------------------------------- Escape watch (#24)
