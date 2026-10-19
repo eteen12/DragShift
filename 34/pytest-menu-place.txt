@@ -1,0 +1,31 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0
+rootdir: /home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/menu-placement
+collected 10 items
+tests/linux/test_menu_place.py 
+{'at': (300, 300), 'expected': (100, 100), 'work_area': None, 'frame': (100, 100, 400, 400), 'places': [['DragShift menu', 100, 100, False]], 'above': True, 'focused': ['pics-26748826564320']}
+{'at': (300, 300), 'expected': (100, 100), 'work_area': None, 'frame': (100, 100, 400, 400), 'places': [['DragShift menu', 100, 100, False]], 'above': True, 'focused': ['pics-26748826564320']}
+.
+{'at': (1590, 890), 'expected': (1199, 499), 'work_area': None, 'frame': (1199, 499, 400, 400), 'places': [['DragShift menu', 1199, 499, False]], 'above': True, 'focused': ['pics-26751988688755']}
+{'at': (1590, 890), 'expected': (1199, 499), 'work_area': None, 'frame': (1199, 499, 400, 400), 'places': [['DragShift menu', 1199, 499, False]], 'above': True, 'focused': ['pics-26751988688755']}
+.xx
+ {'frame': (100, 100, 400, 400), 'menu_stacking': 1, 'files_stacking': 0, 'above': True, 'focused': ['pics-26759437141541']}
+hub area changed by 34.6, Files beside it by 0.0
+.
+backdrop at (100, 100): mean |capture - screen| 0.15, screen std 77.3
+backdrop at (1199, 499): mean |capture - screen| 0.03, screen std 35.1
+..
+screens [[0, 0, 1600, 900], [1600, 0, 1280, 720]] 
+{'at': (1590, 450), 'monitor': (0, 0, 1600, 900), 'work_area': None, 'expected': (1199, 250), 'frame': (1199, 250, 400, 400)}
+{'at': (1610, 300), 'monitor': (1600, 0, 1280, 720), 'work_area': None, 'expected': (1600, 100), 'frame': (1600, 100, 400, 400)}
+{'at': (2870, 710), 'monitor': (1600, 0, 1280, 720), 'work_area': None, 'expected': (2479, 319), 'frame': (2479, 319, 400, 400)}
+{'at': (2240, 360), 'monitor': (1600, 0, 1280, 720), 'work_area': None, 'expected': (2040, 160), 'frame': (2040, 160, 400, 400)}
+.
+ (1199, 499, 400, 400) True False | menu: at (1199, 499) 400x400, moved now: False, backdrop: capture
+.
+ (900, 100, 400, 400) True False | menu: at (900, 100) 400x400, moved now: False, backdrop: capture
+.
+=========================== short test summary info ============================
+XFAIL tests/linux/test_menu_place.py::test_menu_opens_at_the_pointer_clamped_to_the_monitor[top-edge] - Mutter keeps windows out of the top bar and the dock: frame (600, 32, 400, 400) for (600, 0). radial.py clamps to the work area once #42 adds platform_linux.work_area.
+XFAIL tests/linux/test_menu_place.py::test_menu_opens_at_the_pointer_clamped_to_the_monitor[left-edge] - Mutter keeps windows out of the top bar and the dock: frame (66, 250, 400, 400) for (0, 250). radial.py clamps to the work area once #42 adds platform_linux.work_area.
+======================== 8 passed, 2 xfailed in 37.45s =========================

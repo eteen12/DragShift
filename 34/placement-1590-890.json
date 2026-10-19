@@ -1,0 +1,60 @@
+[
+ {
+  "at": [
+   1590,
+   890
+  ],
+  "expected": [
+   1199,
+   499
+  ],
+  "work_area": null,
+  "frame": [
+   1199,
+   499,
+   400,
+   400
+  ],
+  "places": [
+   [
+    "DragShift menu",
+    1199,
+    499,
+    false
+   ]
+  ],
+  "above": true,
+  "focused": [
+   "pics-26751988688755"
+  ]
+ },
+ {
+  "at": [
+   1590,
+   890
+  ],
+  "expected": [
+   1199,
+   499
+  ],
+  "work_area": null,
+  "frame": [
+   1199,
+   499,
+   400,
+   400
+  ],
+  "places": [
+   [
+    "DragShift menu",
+    1199,
+    499,
+    false
+   ]
+  ],
+  "above": true,
+  "focused": [
+   "pics-26751988688755"
+  ]
+ }
+]
