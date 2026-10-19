@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 from jeepney.io.blocking import open_dbus_connection
 
+from dragshift.trigger import LINUX_DRAG_THRESHOLD
 from tests.linux import caller, inject
 from tests.linux import session as session_mod
 from tests.linux.conftest import require_session_tools
@@ -254,7 +255,8 @@ def test_the_real_app_works(cc_session, shell, tmp_path):
         with inject.hold_key(shell, "Shift_L"):
             inject.button_down(shell)
             time.sleep(0.2)                # the trigger (15 ms ticks) sees the press here
-            inject.move(shell, 716, 500)   # past its 10 px threshold, then still
+            # glide past the Linux drag threshold (#31), then hold still
+            inject.glide(shell, 700 + LINUX_DRAG_THRESHOLD + 10, 500, dur=0.25)
             try:
                 assert _wait(lambda: _app_windows(shell, proc.pid) - before, timeout=5), \
                     "no menu: " + (tmp_path / "app.err").read_text()
