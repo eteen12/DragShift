@@ -273,3 +273,41 @@ uv run python -m tests.linux.session --extension /tmp/ext/dragshift@eteen12.gith
 
 The launcher returns once the shell answers on D-Bus. Extensions are enabled a moment
 later, so wait for the name before calling it.
+
+### Escape while the menu is open
+
+During a file drag, Mutter's drag grab takes Escape itself and cancels the drag, so
+no app or extension sees the key. What the drop target gets instead is a `dragLeave`
+about 1-2 ms after Escape while the left button is still down (`pointer_state()` still
+reports it), and no drop when the button goes up. That is how the app learns about a
+cancelled drag (#32). Measured with real drags from Files and the desktop into a
+probe window, under native Wayland and Xwayland (`tests/linux/test_escape.py`).
+
+Outside a drag (the menu's click mode), `platform_linux.watch_escape(True, callback)`
+asks the extension (`WatchEscape`) to grab Escape globally and calls `callback` on
+every press (`EscapePressed`), from a background thread. While the grab is held the
+focused window gets no key press, so Qt's `keyPressEvent` can't fire as well.
+`watch_escape(False)` releases it. Call it only while the menu is open: Escape is taken
+from every other app meanwhile. The grab belongs to the client's own D-Bus connection,
+so it also ends when the app exits or crashes, or when the extension is disabled. It
+returns False when the extension is missing or something else already holds Escape.
+
+### Screen capture (`CaptureArea`)
+
+`platform_linux.capture(x, y, w, h)` returns the screen under a rect as a PIL RGB image of
+exactly w×h, or None when the extension doesn't answer. It comes from the extension's
+`CaptureArea`, which paints the rect offscreen with the drag icon hidden: Mutter's
+feedback group (Wayland drags, e.g. from Files and the desktop) and DND-type windows (X11
+drags). The paint is synchronous, so the icon is back before the next frame. The cursor
+is never in it. A rect partly off the screen is clamped by the extension and padded with
+edge pixels by the client.
+
+Almost all of the time goes into the shell's PNG encoding, so `CaptureArea` returns the
+rect as up to four horizontal PNG strips encoded in parallel. A 400×400 capture takes
+about 11-17 ms end to end (one strip took 24-42 ms). Raw pixels can't be had instead:
+GJS copies the buffer passed to `Clutter.Stage.paint_to_buffer` and `Cogl.Texture.get_data`,
+so nothing written into it reaches JavaScript.
+
+```sh
+uv run pytest tests/linux/test_capture.py -s   # incl. a real Nautilus drag; prints timings
+```

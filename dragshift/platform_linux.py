@@ -143,12 +143,176 @@ def place_window(title: str, x: int, y: int) -> bool:
     return bool(body and body[0])
 
 
+# ---------------------------------------------------------------- Escape (#24)
+# WatchEscape/EscapePressed need a connection that receives signals, so they get their
+# own (a jeepney DBusRouter with a receiver thread), opened by watch_escape(True) and
+# closed by watch_escape(False). _call's blocking request/reply connection is never used
+# for it. The extension ties the grab to this connection: closing it releases Escape.
+_esc = None          # (router, filter handle) while watching
+_esc_cb = None       # the callback EscapePressed calls
+_esc_lock = threading.Lock()
+
+
+class _OnSignal:
+    """Stands in for the queue of a jeepney filter: each matched signal calls the
+    current watch_escape() callback (on the router's receiver thread)."""
+
+    def put_nowait(self, _msg):
+        cb = _esc_cb
+        if cb is not None:
+            try:
+                cb()
+            except Exception:
+                import traceback
+                traceback.print_exc()
+
+
+def _esc_close() -> None:
+    global _esc
+    if _esc is None:
+        return
+    router, handle = _esc
+    _esc = None
+    try:
+        handle.close()
+        router.close()           # stops the receiver thread
+    except Exception:
+        pass
+    try:
+        router.conn.close()      # the extension sees the name vanish and drops the grab
+    except Exception:
+        pass
+
+
+def watch_escape(on: bool, callback=None) -> bool:
+    """Ask the shell extension to report Escape (True) or stop (False).
+
+    on=True grabs Escape for this process until watch_escape(False) or exit, and calls
+    `callback()` on every press, from a background thread (hand it to the GUI thread
+    yourself). Returns True while the grab is held; False when the extension is missing,
+    too old, or another program holds Escape. Never raises. Calling it again with True
+    only replaces the callback.
+
+    Escape is grabbed for the whole desktop while watching, so call it only while the
+    menu is open. During a file drag Mutter itself takes Escape to cancel the drag and
+    the grab never fires (#24): watch for the drag ending instead."""
+    global _esc, _esc_cb
+    with _esc_lock:
+        if not on:
+            _esc_cb = None
+            if _esc is not None:
+                try:
+                    _esc_call(_esc[0], False)
+                except Exception:
+                    pass
+            _esc_close()
+            return False
+        _esc_cb = callback
+        if _esc is not None:
+            return True
+        try:
+            from jeepney import MatchRule
+            from jeepney.bus_messages import message_bus
+            from jeepney.io.threading import DBusRouter, Proxy, open_dbus_connection
+        except ImportError:
+            return False
+        try:
+            router = DBusRouter(open_dbus_connection(bus="SESSION",
+                                                     auth_timeout=DBUS_TIMEOUT))
+        except Exception:
+            return False
+        rule = MatchRule(type="signal", interface=INTERFACE, member="EscapePressed",
+                         path=OBJECT_PATH)
+        handle = router.filter(rule, queue=_OnSignal())
+        _esc = (router, handle)
+        try:
+            Proxy(message_bus, router, timeout=DBUS_TIMEOUT).AddMatch(rule)
+            if _esc_call(router, True):
+                return True
+        except Exception:
+            pass
+        _esc_cb = None
+        _esc_close()
+        return False
+
+
+def _esc_call(router, on: bool) -> bool:
+    from jeepney import DBusAddress, MessageType, new_method_call
+    msg = new_method_call(DBusAddress(OBJECT_PATH, BUS_NAME, INTERFACE), "WatchEscape",
+                          "b", (on,))
+    reply = router.send_and_get_reply(msg, timeout=DBUS_TIMEOUT)
+    return reply.header.message_type == MessageType.method_return and reply.body == (True,)
+
+
 # ---------------------------------------------------------------- screen capture
+CAPTURE_TIMEOUT = 0.5   # seconds; a 400×400 capture takes 10-20 ms, a busy shell longer
+
+
 def capture(x: int, y: int, w: int, h: int, exclude_self: bool = False):
-    """Screen rect (logical px) as a PIL RGB image, or None. The drag picture (Mutter's
-    drag actor) is ALWAYS left out. exclude_self additionally leaves DragShift's own
-    windows out, for live refresh behind toasts and tool windows."""
-    return None
+    """Screen rect (logical px) as a PIL RGB image of exactly w×h, or None. The drag
+    picture (Mutter's drag actor, or an X11 app's DND window) is ALWAYS left out, and so
+    is the cursor. exclude_self
+    additionally leaves DragShift's own windows out, for live refresh behind toasts and
+    tool windows.
+
+    The extension clamps the rect to the screen; the part that was off it is filled
+    with the nearest edge pixels. A HiDPI capture is scaled back to logical size.
+    None when the extension doesn't answer (missing, disabled, timeout) and, until the
+    extension can leave our own windows out (#28), when exclude_self is set."""
+    if w <= 0 or h <= 0 or exclude_self:
+        return None
+    body = _call("CaptureArea", "iiii", x, y, w, h, timeout=CAPTURE_TIMEOUT)
+    if not body or len(body) != 5:
+        return None
+    ax, ay, aw, ah, strips = body
+    try:
+        import io
+        from PIL import Image
+        parts = []
+        for png in strips:
+            with Image.open(io.BytesIO(png)) as part:
+                parts.append(part.convert("RGB"))
+        if not parts or len({p.width for p in parts}) != 1:
+            return None
+        im = Image.new("RGB", (parts[0].width, sum(p.height for p in parts)))
+        top = 0
+        for p in parts:                     # PNG strips, top to bottom
+            im.paste(p, (0, top))
+            top += p.height
+    except Exception:
+        return None
+    return _fit(im, (ax - x, ay - y, aw, ah), w, h)
+
+
+def _fit(im, area: tuple[int, int, int, int], w: int, h: int):
+    """`im` (the capture of `area`, given relative to the requested rect) on a w×h
+    canvas: scaled to the area's logical size, placed at its offset, and the uncovered
+    bands filled by stretching the nearest edge row/column."""
+    from PIL import Image
+    ox, oy, aw, ah = area
+    if im.size != (aw, ah):
+        im = im.resize((aw, ah), Image.BILINEAR)
+    if (ox, oy, aw, ah) == (0, 0, w, h):
+        return im
+    # Clip the area to the canvas (it never sticks out, but stay safe).
+    x0, y0 = max(0, ox), max(0, oy)
+    x1, y1 = min(w, ox + aw), min(h, oy + ah)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    im = im.crop((x0 - ox, y0 - oy, x1 - ox, y1 - oy))
+    out = Image.new("RGB", (w, h))
+    out.paste(im, (x0, y0))
+    iw, ih = im.size
+    # left/right bands from the first/last column, then top/bottom from full rows
+    if x0 > 0:
+        out.paste(im.crop((0, 0, 1, ih)).resize((x0, ih)), (0, y0))
+    if x1 < w:
+        out.paste(im.crop((iw - 1, 0, iw, ih)).resize((w - x1, ih)), (x1, y0))
+    if y0 > 0:
+        out.paste(out.crop((0, y0, w, y0 + 1)).resize((w, y0)), (0, 0))
+    if y1 < h:
+        out.paste(out.crop((0, y1 - 1, w, y1)).resize((w, h - y1)), (0, y1))
+    return out
 
 
 def wallpaper_crop(x: int, y: int, w: int, h: int):
