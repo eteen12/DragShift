@@ -255,3 +255,21 @@ uv run python -m tests.linux.session --extension /tmp/ext/dragshift@eteen12.gith
 
 The launcher returns once the shell answers on D-Bus. Extensions are enabled a moment
 later, so wait for the name before calling it.
+
+### Escape while the menu is open
+
+During a file drag, Mutter's drag grab takes Escape itself and cancels the drag, so
+no app or extension sees the key. What the drop target gets instead is a `dragLeave`
+about 1-2 ms after Escape while the left button is still down (`pointer_state()` still
+reports it), and no drop when the button goes up. That is how the app learns about a
+cancelled drag (#32). Measured with real drags from Files and the desktop into a
+probe window, under native Wayland and Xwayland (`tests/linux/test_escape.py`).
+
+Outside a drag (the menu's click mode), `platform_linux.watch_escape(True, callback)`
+asks the extension (`WatchEscape`) to grab Escape globally and calls `callback` on
+every press (`EscapePressed`), from a background thread. While the grab is held the
+focused window gets no key press, so Qt's `keyPressEvent` can't fire as well.
+`watch_escape(False)` releases it. Call it only while the menu is open: Escape is taken
+from every other app meanwhile. The grab belongs to the client's own D-Bus connection,
+so it also ends when the app exits or crashes, or when the extension is disabled. It
+returns False when the extension is missing or something else already holds Escape.
