@@ -386,13 +386,29 @@ fork, with `git clone --depth 1`, or the tarball without git. Re-running it upda
   uv), the Qt libraries for offscreen and native Wayland, and desktop-file-utils. If any is
   missing, it prints the `sudo apt install …` line and exits 1. `libxcb-cursor0` is not
   needed.
-- **Options.** `--no-start`, `--from-dir <checkout>`, `--uninstall` (a stub until #67).
+- **Options.** `--no-start`, `--from-dir <checkout>`, `--uninstall [--purge]`.
+- **Uninstall** (#67). `--uninstall` stops this install's app: it sends `{"quit": true}`
+  over the hand-off socket when that app is the one listening there, else SIGTERM, with
+  SIGKILL as a last resort. A DragShift run from a checkout is left alone.
+  - It takes `dragshift@eteen12.github.io` out of `enabled-extensions` (and
+    `disabled-extensions`) and leaves every other UUID. The running shell switches the
+    extension off at once and forgets it at the next login.
+  - It deletes exactly what the install wrote, including `DragShift…` in each scripts
+    folder, and removes a stale socket. `$XDG_DATA_HOME/dragshift` goes only when nothing
+    else is left in it.
+  - It keeps `$XDG_CONFIG_HOME/DragShift` and `$XDG_STATE_HOME/DragShift`. `--purge` also
+    removes those and LibreOffice's work folders.
+  - Shared folders such as `~/.local/bin` and `applications/` stay, even when empty.
+  - It refuses a HOME or XDG dir that is empty, relative or resolves to `/`.
+  - Running it again, or on a partial install, is fine: it reports what it removed.
 - **Download overrides.** `DRAGSHIFT_REPO`, `DRAGSHIFT_REF` and `DRAGSHIFT_TARBALL` change
   where the download comes from. The tests use `file://` URLs.
 
 ```sh
 uv run pytest tests/test_install_script.py               # options, apt line, quoting; no session
+uv run pytest tests/test_uninstall_script.py             # --uninstall on a fake install; no session
 uv run pytest -s tests/linux/test_install.py             # installs in sessions, then logs in again
+uv run pytest -s tests/linux/test_uninstall.py           # install → uninstall → re-install, 3 logins
 ```
 
 `tests/linux/test_install.py` installs into a session's temporary HOME, then boots a second
@@ -402,6 +418,13 @@ ACTIVE, that the autostart entry starts the app (launched through GDesktopAppInf
 gnome-session does), and that a Shift+drag converts a file. It also starts the app from
 the app grid and covers Open With and the Scripts menu. Set `DRAGSHIFT_TEST_CACHE=<dir>`
 to keep the uv/pip downloads between runs.
+
+`tests/linux/test_uninstall.py` puts the user's own Files script (`Open in Claude Code`, in
+both scripts folders) and another extension in place first. Then it installs, runs the app
+and uninstalls. It compares the session's file tree before the install with the tree after
+the uninstall: only GNOME's own records, the kept settings and log, shared folders and an
+emptied `mimeinfo.cache` may differ. A second login uninstalls with `--purge` while the
+extension is loaded, and a third checks that GNOME has forgotten it.
 
 ## DOCX → PDF and LibreOffice
 
