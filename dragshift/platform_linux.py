@@ -501,9 +501,14 @@ def autostart_path() -> Path:
     return base / "autostart" / "dragshift.desktop"
 
 
+def launcher_path() -> Path:
+    """Where install-linux.sh puts the launcher: ~/.local/bin/dragshift."""
+    return Path.home() / ".local" / "bin" / "dragshift"
+
+
 def launch_args() -> list[str]:
     """How to start DragShift quietly: the installed launcher, else this Python."""
-    launcher = Path.home() / ".local" / "bin" / "dragshift"
+    launcher = launcher_path()
     if launcher.is_file():
         return [str(launcher), "--quiet"]
     return [sys.executable, "-m", "dragshift", "--quiet"]
@@ -549,7 +554,7 @@ def set_autostart(on: bool) -> None:
                  f"Exec={launch_command(args)}"]
         if args[1:2] == ["-m"]:          # no launcher: `-m dragshift` needs this checkout as cwd
             lines.append("Path=" + _escape(str(Path(__file__).resolve().parent.parent)))
-        lines += ["Icon=dragshift", "Terminal=false", "X-GNOME-Autostart-enabled=true", "NoDisplay=false"]
+        lines += ["Icon=io.github.eteen12.DragShift", "Terminal=false", "X-GNOME-Autostart-enabled=true", "NoDisplay=false"]
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")

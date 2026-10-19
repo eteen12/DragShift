@@ -244,7 +244,14 @@ class WelcomeWindow(GlassWindow):
             self.auto = QCheckBox("Start with Windows" if IS_WIN
                                   else "Start when you log in" if IS_LINUX
                                   else "Open at login")
-            self.auto.setChecked(True)
+            on = True
+            if IS_LINUX:
+                from . import platform_linux
+                # Installed with install-linux.sh, which already asked (--no-autostart):
+                # show that choice instead of turning it back on with "Got it".
+                if platform_linux.launcher_path().is_file():
+                    on = platform_linux.autostart_enabled()
+            self.auto.setChecked(on)
             foot.addWidget(self.auto)
         foot.addStretch(1)
         ok = QPushButton("Got it")

@@ -82,7 +82,7 @@ def test_entry_keys_with_launcher(home, lx):
         "Name": "DragShift",
         "Comment": "Shift+drag any file to convert or edit it",
         "Exec": f"{launcher} --quiet",
-        "Icon": "dragshift",
+        "Icon": "io.github.eteen12.DragShift",     # the icon install-linux.sh installs
         "Terminal": "false",
         "X-GNOME-Autostart-enabled": "true",
         "NoDisplay": "false",
@@ -191,3 +191,16 @@ def test_welcome_done_applies_checkbox(home, qapp, lx, checked):
     w.auto.setChecked(checked)
     w._done()
     assert lx.autostart_enabled() is checked
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_welcome_shows_the_installers_choice(home, qapp, lx, enabled):
+    """With install-linux.sh's launcher the installer already decided (--no-autostart), so
+    the Welcome box starts from the entry instead of turning autostart back on."""
+    from dragshift import settings
+    install_launcher(home)
+    lx.set_autostart(enabled)
+    w = settings.WelcomeWindow(settings.Settings())
+    assert w.auto.isChecked() is enabled
+    w._done()
+    assert lx.autostart_enabled() is enabled
