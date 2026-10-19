@@ -8,7 +8,7 @@ import time
 import traceback
 from pathlib import Path
 
-from PySide6.QtCore import QDir, QObject, QPointF, QRunnable, Qt, QThreadPool, QTimer, QUrl, Signal
+from PySide6.QtCore import QDir, QObject, QPoint, QPointF, QRunnable, Qt, QThreadPool, QTimer, QUrl, Signal
 from PySide6.QtGui import (QAction, QColor, QCursor, QDesktopServices, QGuiApplication, QIcon, QPainter,
                            QPixmap)
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
@@ -353,6 +353,11 @@ class DragShiftApp(QObject):
             self.show_click_menu(files)
 
     def show_click_menu(self, files: list[str]):
+        if IS_LINUX:
+            # no activateWindow(): on Wayland it can only ask for attention, and the menu
+            # never takes the focus anyway (#10, #36)
+            self.menu.popup(linux_click_pos(), files)
+            return
         g = (QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()).availableGeometry()
         pos = QCursor.pos() if g.contains(QCursor.pos()) else g.center()
         self.menu.popup(pos, files)
@@ -369,6 +374,16 @@ class DragShiftApp(QObject):
 
     def show_welcome(self):
         self.open_window(WelcomeWindow(self.settings, self.trigger_label()))
+
+
+def linux_click_pos() -> QPoint:
+    """Linux: where a click-mode menu opens. The pointer from DragShift's shell extension
+    (QCursor.pos() is stale under Wayland), else the centre of the primary screen."""
+    from . import platform_linux
+    st = platform_linux.pointer_state()
+    if st is not None:
+        return QPoint(int(st[0]), int(st[1]))
+    return QGuiApplication.primaryScreen().geometry().center()
 
 
 class DragShiftQApplication(QApplication):

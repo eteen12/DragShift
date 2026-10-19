@@ -23,6 +23,7 @@ from pathlib import Path
 # Clutter.ModifierType bits, as the shell extension reports them in `modifier_mask`
 SHIFT_MASK, CONTROL_MASK, MOD1_MASK = 1 << 0, 1 << 2, 1 << 3
 BUTTON1_MASK = 1 << 8
+BUTTONS_MASK = 0b111 << 8      # buttons 1-3 (Mutter 46 reports the right button as 1 << 9, measured)
 KEY_MASKS = {"shift": SHIFT_MASK, "ctrl": CONTROL_MASK, "alt": MOD1_MASK}
 
 
