@@ -1,0 +1,99 @@
+# TEMPORARY route comparison for #58 (apt on the runner vs the #15 Docker image).
+name: End-to-end test (headless GNOME on Linux)
+
+on:
+  push:
+    branches: [lx/e2e-ci]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        route: [apt, docker]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner facts
+        run: |
+          nproc; free -m; df -h / /tmp | tail -2; ls -ld /tmp/.X11-unix /dev/dri 2>&1 || true
+          apt-cache policy gnome-shell mutter xwayland | grep -E '^\S|Candidate'
+          which ffmpeg || true
+
+      # ---------------------------------------------------------------- apt route
+      - name: "[apt] Install GNOME Shell 46 and friends"
+        if: matrix.route == 'apt'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gnome-shell mutter xwayland nautilus dbus dbus-x11 \
+            gnome-shell-extension-desktop-icons-ng gnome-shell-extension-ubuntu-dock \
+            gnome-shell-extension-appindicator yaru-theme-gnome-shell \
+            at-spi2-core gir1.2-atspi-2.0 python3-gi \
+            libgl1-mesa-dri mesa-utils fonts-ubuntu fonts-noto-core libxcb-cursor0 \
+            dconf-cli x11-utils xdg-utils file ffmpeg \
+            python3-venv libgl1 libegl1 libfontconfig1 libfreetype6 libglib2.0-0t64 \
+            libdbus-1-3 libx11-6 libxkbcommon0 libgssapi-krb5-2 \
+            libx11-xcb1 libxcb1 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 libxcb-sync1 \
+            libxcb-util1 libxcb-xfixes0 libxcb-xkb1 libxkbcommon-x11-0 \
+            libwayland-client0 libwayland-cursor0 libwayland-egl1
+          sudo mkdir -p /tmp/.X11-unix && sudo chown root:root /tmp/.X11-unix && sudo chmod 1777 /tmp/.X11-unix
+          gnome-shell --version
+
+      - name: "[apt] Python deps"
+        if: matrix.route == 'apt'
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -q --upgrade pip
+          .venv/bin/pip install -q -r requirements.txt pytest
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: "[apt] E2E"
+        if: matrix.route == 'apt'
+        run: |
+          python -c "from tests.linux.session import missing_tools as m; assert not m(), m()"
+          mkdir -p e2e_linux_out
+          time python demo/e2e_linux.py --record --out e2e_linux_out
+
+      - name: "[apt] gnome tests"
+        if: matrix.route == 'apt' && !cancelled()
+        run: time python -m pytest -q -rs -p no:cacheprovider -m gnome tests/linux --durations=15
+
+      # ---------------------------------------------------------------- docker route
+      - name: "[docker] Build the image"
+        if: matrix.route == 'docker'
+        run: |
+          time (tar -cf - -C tests/linux/docker Dockerfile -C "$PWD" requirements.txt \
+            | docker build -q -t dragshift-gnome-test:ci -)
+
+      - name: "[docker] E2E"
+        if: matrix.route == 'docker'
+        run: |
+          mkdir -p e2e_linux_out
+          time docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+            -v "$PWD:/src:ro" -v "$PWD/e2e_linux_out:/out" -w /src dragshift-gnome-test:ci \
+            python demo/e2e_linux.py --record --out /out
+
+      - name: "[docker] gnome tests"
+        if: matrix.route == 'docker' && !cancelled()
+        run: |
+          time docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" \
+            -v "$PWD:/src:ro" -w /src dragshift-gnome-test:ci \
+            python -m pytest -q -rs -p no:cacheprovider -m gnome tests/linux --durations=15
+
+      - name: Summary
+        if: always()
+        run: cat e2e_linux_out/results.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-linux-${{ matrix.route }}
+          path: e2e_linux_out
