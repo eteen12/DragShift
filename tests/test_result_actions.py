@@ -113,7 +113,7 @@ def test_open_uses_qt_on_windows_and_macos(qapp, monkeypatch, tmp_path, platform
     monkeypatch.setattr(toasts.subprocess, "Popen", lambda cmd, *a, **k: spawned.append(cmd))
     monkeypatch.setattr(toasts.QDesktopServices, "openUrl", staticmethod(urls.append))
     toasts.open_file(tmp_path / "a b.png")
-    assert [u.toLocalFile() for u in urls] == [str(tmp_path / "a b.png")] and spawned == []
+    assert [Path(u.toLocalFile()) for u in urls] == [tmp_path / "a b.png"] and spawned == []
 
 
 @linux_only
@@ -137,7 +137,7 @@ def test_open_falls_back_to_qt_without_xdg_open(qapp, monkeypatch, tmp_path):
     monkeypatch.setattr(toasts.subprocess, "Popen", missing)
     monkeypatch.setattr(toasts.QDesktopServices, "openUrl", staticmethod(urls.append))
     toasts.open_file(tmp_path / "a.png")
-    assert [u.toLocalFile() for u in urls] == [str(tmp_path / "a.png")]
+    assert [Path(u.toLocalFile()) for u in urls] == [tmp_path / "a.png"]
 
 
 # ---------------------------------------------------------------- reveal over D-Bus
