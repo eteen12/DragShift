@@ -123,3 +123,33 @@ it is missing. To leave them out:
 ```sh
 .venv/bin/python -m pytest -q -m "not libreoffice"
 ```
+
+## GNOME Shell extension
+
+The app gets the global pointer and screen capture on Wayland from its own GNOME Shell 46
+extension, `extension/dragshift@eteen12.github.io/`. It owns `io.github.eteen12.DragShift`
+on the session bus, and its interface is in `dbus.xml`. `dragshift/platform_linux.py` is
+the Python client (`jeepney`, 200 ms timeout, `None` when the extension doesn't answer).
+
+```sh
+extension/build.sh                 # → dist/dragshift@eteen12.github.io.shell-extension.zip
+uv run pytest tests/linux/test_extension.py   # build + client tests, then session tests
+```
+
+`build.sh` writes the app version from `dragshift/__init__.py` into the zip's
+`metadata.json` (`version-name`), and the extension's `Version()` returns it. At start-up
+the app prints a warning when the two differ. The zip is what `gnome-extensions install
+--force` takes, but GNOME on Wayland only loads a newly installed extension after you log
+out and back in. To try a change, load it in the isolated session rather than on your
+desktop:
+
+```sh
+mkdir -p /tmp/ext && unzip -o -d /tmp/ext/dragshift@eteen12.github.io dist/*.zip
+uv run python -m tests.linux.session --extension /tmp/ext/dragshift@eteen12.github.io -- \
+  sh -c 'gdbus wait --session --timeout 10 io.github.eteen12.DragShift &&
+    gdbus call --session --dest io.github.eteen12.DragShift \
+      --object-path /io/github/eteen12/DragShift --method io.github.eteen12.DragShift.Version'
+```
+
+The launcher returns once the shell answers on D-Bus. Extensions are enabled a moment
+later, so wait for the name before calling it.
