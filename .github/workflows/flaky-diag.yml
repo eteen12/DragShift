@@ -42,7 +42,7 @@ jobs:
           fails=0
           for i in $(seq 1 8); do
             printf '.lines -d\n.echo ==== STACKS\n~*kn 60\n.echo ==== EXC\n.exr -1\n.ecxr\nkn 60\nq\n' | \
-              "$CDB" -g -G -o "$PY" -X faulthandler=0 -m pytest -q -s -p no:faulthandler -p no:cacheprovider -p diagplug > out.txt 2>&1 || true
+              "$CDB" -g -G -o "$PY" -m pytest -q -s -p no:faulthandler -p no:cacheprovider -p diagplug > out.txt 2>&1 || true
             if grep -q ' passed' out.txt && ! grep -q '==== STACKS' out.txt; then
               echo "run $i: ok ($(grep ' passed' out.txt | tail -1))"
             else
