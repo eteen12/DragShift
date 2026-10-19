@@ -20,10 +20,24 @@ Log records (one JSON object per line, flushed immediately):
 - {"type": "keyPress" | "keyRelease", "key" (Qt.Key name), "text", "modifiers",
   "autorepeat"}
 - {"type": "text", "text": <line edit contents>} whenever the line edit changes.
+- Drag and drop from other apps (Files, the desktop): {"type": "dragEnter" | "drop",
+  "lx", "ly", "formats" (MIME types offered), "urls" (QMimeData.urls() as strings),
+  "uri_list" (the raw text/uri-list payload or null), "text", "proposed" (the action the
+  source/compositor proposed), "possible" (actions offered), "action" (what the probe
+  answered), "accepted", "modifiers", "external" (no Qt drag source in this process)}.
+  {"type": "dragMove", "lx", "ly", "proposed", "action", "modifiers"} and
+  {"type": "dragLeave"} in between. Action names are Qt's ("CopyAction", "MoveAction").
 Modifier and button names are Qt's ("ShiftModifier", "LeftButton").
 
+How the probe answers a drag is set by `--drop-action`:
+- "copy" (default): setDropAction(CopyAction) + accept, exactly like DragShift's radial
+  menu (dragshift/radial.py), so a Shift+drag (which proposes MoveAction) never makes the
+  source delete the file.
+- "proposed": acceptProposedAction(), i.e. whatever the source proposes.
+- "ignore": refuse the drag.
+
 The window also paints what it received (the stroke of every drag, press and release
-dots, the last key), so a screenshot shows injected input.
+dots, drop points, the last key or dropped URL), so a screenshot shows injected input.
 """
 from __future__ import annotations
 
@@ -48,6 +62,12 @@ _BUTTONS = ("LeftButton", "RightButton", "MiddleButton", "BackButton", "ForwardB
 _MOUSE = {QEvent.Type.MouseMove: "mouseMove", QEvent.Type.MouseButtonPress: "mousePress",
           QEvent.Type.MouseButtonRelease: "mouseRelease"}
 _KEYS = {QEvent.Type.KeyPress: "keyPress", QEvent.Type.KeyRelease: "keyRelease"}
+_ACTIONS = ("CopyAction", "MoveAction", "LinkAction")
+DROP_ACTIONS = ("copy", "proposed", "ignore")
+
+
+def _action_name(action) -> str | None:
+    return next((n for n in _ACTIONS if action == getattr(Qt.DropAction, n)), None)
 
 
 def _flags(value, names, enum):
@@ -69,6 +89,7 @@ class Canvas(QWidget):
         self.strokes: list[list[QPointF]] = []
         self.presses: list[QPointF] = []
         self.releases: list[QPointF] = []
+        self.drops: list[QPointF] = []
         self.status = "waiting for input"
         self.setMinimumSize(200, 200)
 
@@ -86,7 +107,8 @@ class Canvas(QWidget):
         for stroke in self.strokes:
             for a, b in zip(stroke, stroke[1:]):
                 p.drawLine(a, b)
-        for points, color in ((self.presses, "#d03030"), (self.releases, "#2a9d4a")):
+        for points, color in ((self.presses, "#d03030"), (self.releases, "#2a9d4a"),
+                              (self.drops, "#8a2be2")):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QColor(color))
             for pt in points:
@@ -98,13 +120,16 @@ class Canvas(QWidget):
 
 
 class Probe(QWidget):
-    def __init__(self, log_path: str, title: str):
+    def __init__(self, log_path: str, title: str, drop_action: str = "copy"):
         super().__init__(None, Qt.WindowType.FramelessWindowHint)
         self.setWindowTitle(title)
+        self.setAcceptDrops(True)
+        self.drop_action = drop_action
         self._log = open(log_path, "a", buffering=1, encoding="utf-8")
         self.edit = QLineEdit()
         self.edit.setPlaceholderText("TypeText goes here")
         self.edit.setFont(QFont("Sans", 16))
+        self.edit.setAcceptDrops(False)  # every drop goes to the probe itself
         self.edit.textChanged.connect(lambda t: self.write(type="text", text=t))
         self.canvas = Canvas()
         lay = QVBoxLayout(self)
@@ -141,6 +166,54 @@ class Probe(QWidget):
             self.canvas.update()
         return False
 
+    # Drag and drop from other apps. Qt delivers these to the widget, not through the
+    # QWindow filter above, so nothing is logged twice.
+    def _answer(self, e) -> bool:
+        if self.drop_action == "ignore":
+            e.ignore()
+            return False
+        if self.drop_action == "copy":
+            e.setDropAction(Qt.DropAction.CopyAction)
+            e.accept()
+        else:
+            e.acceptProposedAction()
+        return True
+
+    def _drag_record(self, kind: str, e, accepted: bool, full: bool) -> dict:
+        pos = e.position()
+        record = dict(type=kind, lx=round(pos.x()), ly=round(pos.y()),
+                      proposed=_action_name(e.proposedAction()),
+                      action=_action_name(e.dropAction()) if accepted else None,
+                      accepted=accepted,
+                      modifiers=_flags(e.modifiers(), _MODIFIERS, Qt.KeyboardModifier))
+        if full:
+            md = e.mimeData()
+            uri_list = (bytes(md.data("text/uri-list")).decode("utf-8", "replace")
+                        if md.hasFormat("text/uri-list") else None)
+            record.update(formats=list(md.formats()), urls=[u.toString() for u in md.urls()],
+                          uri_list=uri_list, text=md.text() if md.hasText() else None,
+                          possible=[n for n in _ACTIONS
+                                    if e.possibleActions() & getattr(Qt.DropAction, n)],
+                          external=e.source() is None)
+        self.write(**record)
+        return record
+
+    def dragEnterEvent(self, e) -> None:
+        self._drag_record("dragEnter", e, self._answer(e), full=True)
+
+    def dragMoveEvent(self, e) -> None:
+        self._drag_record("dragMove", e, self._answer(e), full=False)
+
+    def dragLeaveEvent(self, e) -> None:
+        self.write(type="dragLeave")
+
+    def dropEvent(self, e) -> None:
+        record = self._drag_record("drop", e, self._answer(e), full=True)
+        c = self.canvas
+        c.drops.append(c.mapFrom(self, e.position()))
+        c.status = f"drop ({record['action']}): {' '.join(record['urls']) or record['text']}"
+        c.update()
+
     def _paint_mouse(self, kind: str, pos: QPointF, held: bool) -> None:
         c = self.canvas
         if kind == "mousePress":
@@ -175,17 +248,22 @@ class ProbeWindow:
     """Runs the probe in a `Session` and reads its log. `shell` is a ready ShellHelper.
 
     platform: "xcb" or "wayland"; default qt_platform(session).
+    drop_action: how the probe answers drags, see DROP_ACTIONS and the module docstring.
     """
 
     def __init__(self, session, shell, platform: str | None = None,
-                 geometry=(200, 120, 900, 600), timeout: float = 20.0):
+                 geometry=(200, 120, 900, 600), timeout: float = 20.0,
+                 drop_action: str = "copy"):
+        if drop_action not in DROP_ACTIONS:
+            raise ValueError(f"drop_action must be one of {DROP_ACTIONS}")
         self.session, self.shell = session, shell
         self.platform = platform or qt_platform(session)
         self.title = f"DragShift input probe {secrets.token_hex(3)}"
         self.log = session.root / "tmp" / f"probe-{secrets.token_hex(4)}.jsonl"
         self.proc = session.popen(
             [sys.executable, "-I", str(Path(__file__).resolve()), "--log", str(self.log),
-             "--title", self.title, "--geometry", ",".join(map(str, geometry))],
+             "--title", self.title, "--geometry", ",".join(map(str, geometry)),
+             "--drop-action", drop_action],
             env={"QT_QPA_PLATFORM": self.platform}, stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE, text=True)
         try:
@@ -213,6 +291,15 @@ class ProbeWindow:
             if time.monotonic() > deadline:
                 raise AssertionError(f"probe window never settled at {self.frame()}")
             time.sleep(0.1)
+
+    def move(self, x: int, y: int, width: int, height: int,
+             timeout: float = 10.0) -> tuple[int, int, int, int]:
+        """Move/resize the probe (on Wayland a client cannot place itself, so this goes
+        through the helper's MoveWindow) and wait until pointer events land at the new
+        place. Returns the new frame."""
+        frame = self.shell.move_window(self.window["id"], x, y, width, height)
+        self._settle(timeout)
+        return frame
 
     def __enter__(self) -> "ProbeWindow":
         return self
@@ -300,10 +387,12 @@ def main(argv=None) -> int:
     ap.add_argument("--log", required=True, help="JSON-lines event log (appended)")
     ap.add_argument("--title", default="DragShift input probe")
     ap.add_argument("--geometry", default="200,120,900,600", help="x,y,w,h")
+    ap.add_argument("--drop-action", choices=DROP_ACTIONS, default="copy",
+                    help="how to answer drags from other apps")
     a = ap.parse_args(argv)
     x, y, w, h = (int(v) for v in a.geometry.split(","))
     app = QApplication([sys.argv[0]])
-    probe = Probe(a.log, a.title)
+    probe = Probe(a.log, a.title, a.drop_action)
     probe.setGeometry(x, y, w, h)
     probe.show()
     probe.watch()

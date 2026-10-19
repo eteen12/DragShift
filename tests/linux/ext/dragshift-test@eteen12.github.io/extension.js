@@ -51,6 +51,14 @@ const IFACE = `
       <arg type="t" direction="in" name="id"/>
       <arg type="b" direction="out" name="found"/>
     </method>
+    <method name="MoveWindow">
+      <arg type="t" direction="in" name="id"/>
+      <arg type="i" direction="in" name="x"/>
+      <arg type="i" direction="in" name="y"/>
+      <arg type="i" direction="in" name="width"/>
+      <arg type="i" direction="in" name="height"/>
+      <arg type="b" direction="out" name="found"/>
+    </method>
     <method name="GetPointer">
       <arg type="i" direction="out" name="x"/>
       <arg type="i" direction="out" name="y"/>
@@ -107,6 +115,13 @@ function xid(window) {
         return 0;
     const m = /^0x([0-9a-f]+)/i.exec(window.get_description() ?? '');
     return m ? parseInt(m[1], 16) : 0;
+}
+
+// A window by ListWindows "id" (Meta.Window.get_id()) or by X11 window id.
+function findWindow(id) {
+    const windows = global.get_window_actors().map(a => a.get_meta_window());
+    return windows.find(win => win.get_id() === id) ??
+        windows.find(win => id !== 0 && xid(win) === id);
 }
 
 function describe(actor, stacking, focus) {
@@ -270,16 +285,31 @@ class Helper {
         return global.get_window_actors().map((actor, i) => describe(actor, i, focus));
     }
 
-    // id is Meta.Window.get_id() (see ListWindows "id") or an X11 window id.
-    // Main.activateWindow is the shell's own path (dash, Alt+Tab): Meta.Window.activate()
-    // plus switching workspace and leaving the overview if needed.
+    // id as for findWindow(). Main.activateWindow is the shell's own path (dash,
+    // Alt+Tab): Meta.Window.activate() plus switching workspace and leaving the overview
+    // if needed.
     ActivateWindow(id) {
-        const windows = global.get_window_actors().map(a => a.get_meta_window());
-        const w = windows.find(win => win.get_id() === id) ??
-            windows.find(win => id !== 0 && xid(win) === id);
+        const w = findWindow(id);
         if (!w)
             return false;
         Main.activateWindow(w, global.get_current_time());
+        return true;
+    }
+
+    // Puts a window's frame (the visible window without client-side shadows, as in
+    // ListWindows "frame") at (x, y) with the given size, leaving maximized or
+    // fullscreen state first. Mutter may still constrain the result (minimum size,
+    // keeping the title bar on screen); the move is asynchronous for Wayland clients, so
+    // callers poll ListWindows for the final frame (ShellHelper.move_window does).
+    MoveWindow(id, x, y, width, height) {
+        const w = findWindow(id);
+        if (!w)
+            return false;
+        if (w.is_fullscreen())
+            w.unmake_fullscreen();
+        if (w.get_maximized())
+            w.unmaximize(Meta.MaximizeFlags.BOTH);
+        w.move_resize_frame(false, x, y, width, height);
         return true;
     }
 
