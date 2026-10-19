@@ -115,7 +115,8 @@ def test_get_own_window_frame_interface():
     js = (EXT / "extension.js").read_text()
     block = js[js.index("GetOwnWindowFrame (#40)"):js.index("end GetOwnWindowFrame")]
     assert "GetOwnWindowFrameAsync([title], invocation)" in block
-    assert "this._callerPid(invocation)" in block and "_windowActorsOf(pid)" in block
+    assert "this._callers.serve(invocation, pid =>" in block and "_windowActorsOf(pid)" in block
+    assert "GetOwnWindowFrame" in (EXT / "caller.js").read_text()   # listed as guarded
 
 
 # ---------------------------------------------------------------- GlassWindow

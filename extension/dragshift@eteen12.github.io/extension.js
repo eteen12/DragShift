@@ -186,17 +186,17 @@ class DragShiftService {
     // stage logical px) while it is mapped, else (false, 0, 0, 0, 0). A native Wayland
     // client is never told its window's position, and DragShift's glass windows need it
     // to capture what is behind them. The caller is known by its pid from the bus (as in
-    // CaptureAreaExcludingCaller), so it can only ask about its own windows. Read-only,
-    // no side effects; polled a few times a second while a glass window is open.
+    // CaptureAreaExcludingCaller, through caller.js), so it can only ask about its own
+    // windows. Read-only, no side effects; polled ten times a second while a glass window
+    // is open, which the cached caller verdict keeps cheap.
     GetOwnWindowFrameAsync([title], invocation) {
-        this._callerPid(invocation).then(pid => {
+        this._callers.serve(invocation, pid => {
             const actor = this._windowActorsOf(pid).find(a =>
                 a.is_mapped() && a.get_meta_window().get_title() === title);
             const r = actor?.get_meta_window().get_frame_rect();
             invocation.return_value(new GLib.Variant('(biiii)',
                 r ? [true, r.x, r.y, r.width, r.height] : [false, 0, 0, 0, 0]));
-        }).catch(e => invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed',
-            String(e?.message ?? e)));
+        });
     }
     // ------------------------------------------------------ end GetOwnWindowFrame
 }
