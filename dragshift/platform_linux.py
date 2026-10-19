@@ -1,4 +1,4 @@
-"""Linux / GNOME integration (only imported on Linux, via `util.linux_module()`).
+"""Linux / GNOME integration (only imported on Linux).
 
 This is the single place the app asks for anything Linux-specific. GNOME on Wayland gives
 normal clients no global pointer state and no screen capture, so most of it will come
@@ -12,8 +12,6 @@ import them lazily inside the functions that need them.
 from __future__ import annotations
 
 from pathlib import Path
-
-OK = True  # pure Python at import time; each function reports its own availability
 
 # Clutter.ModifierType bits, as the shell extension reports them in `modifier_mask`
 SHIFT_MASK, CONTROL_MASK, MOD1_MASK = 1 << 0, 1 << 2, 1 << 3
@@ -59,12 +57,3 @@ def reveal(path: str | Path) -> bool:
     """Show `path` selected in the file manager. False = not handled, caller falls back."""
     return False
 
-
-def has_tray() -> bool:
-    """True when a StatusNotifierItem host is running, so a tray icon will be visible."""
-    return False
-
-
-def soffice_binary() -> list[str] | None:
-    """Command prefix that runs LibreOffice headless, e.g. ["/snap/bin/libreoffice"]."""
-    return None

@@ -19,9 +19,6 @@ from PySide6.QtWidgets import QWidget
 
 from . import glass
 from .report import Result
-from .util import linux_module
-
-IS_LINUX = sys.platform.startswith("linux")
 
 W, H = 380, 104
 GAP = 10
@@ -35,9 +32,11 @@ def reveal(path: str | Path):
     elif sys.platform == "darwin":
         subprocess.Popen(["open", "-R", path])
     else:
-        lx = linux_module() if IS_LINUX else None
-        if lx is None or not lx.reveal(path):
-            subprocess.Popen(["xdg-open", str(Path(path).parent)])
+        if sys.platform.startswith("linux"):
+            from . import platform_linux
+            if platform_linux.reveal(path):
+                return
+        subprocess.Popen(["xdg-open", str(Path(path).parent)])
 
 
 def open_file(path: str | Path):

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif", ".tif", ".tiff",
@@ -98,12 +97,3 @@ def keep(job):
 
 def release(job):
     ALIVE.discard(job)
-
-
-def linux_module():
-    """dragshift.platform_linux on Linux (when usable), else None.
-    Checks sys.platform at call time and never imports the module on Windows/macOS."""
-    if not sys.platform.startswith("linux"):
-        return None
-    from . import platform_linux
-    return platform_linux if platform_linux.OK else None

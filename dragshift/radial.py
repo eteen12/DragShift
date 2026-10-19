@@ -17,7 +17,6 @@ from PySide6.QtGui import (QColor, QCursor, QFont, QGuiApplication, QImage, QPai
 from PySide6.QtWidgets import QWidget
 
 from . import glass
-from .util import linux_module
 
 
 @dataclass
@@ -90,11 +89,9 @@ class _RenderJob(QRunnable):
 
 def _linux_backdrop(x: int, y: int):
     """Linux: what's under the menu rect from platform_linux (screen, else wallpaper), or None."""
-    lx = linux_module()
-    if lx is None:
-        return None
-    im = lx.capture(x, y, SIZE, SIZE)
-    return im if im is not None else lx.wallpaper_crop(x, y, SIZE, SIZE)
+    from . import platform_linux
+    im = platform_linux.capture(x, y, SIZE, SIZE)
+    return im if im is not None else platform_linux.wallpaper_crop(x, y, SIZE, SIZE)
 
 
 class RadialMenu(QWidget):

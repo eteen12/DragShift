@@ -12,8 +12,6 @@ import sys
 from PySide6.QtCore import QObject, QPoint, QTimer, Signal
 from PySide6.QtGui import QCursor
 
-from .util import linux_module
-
 IS_LINUX = sys.platform.startswith("linux")
 VK_LBUTTON, VK_SHIFT, VK_ESCAPE = 0x01, 0x10, 0x1B
 DRAG_THRESHOLD = 10   # px the mouse must travel with the button held
@@ -42,7 +40,10 @@ class DragShiftWatcher(QObject):
         if sys.platform == "darwin":
             from . import platform_mac
             self._mac = platform_mac if platform_mac.OK else None
-        self._linux = linux_module() if IS_LINUX else None
+        self._linux = None
+        if IS_LINUX:
+            from . import platform_linux
+            self._linux = platform_linux
         self._pos = QPoint()   # Linux: pointer position from the last pointer_state()
         self.timer = QTimer(self, interval=15, timeout=self._tick)
 

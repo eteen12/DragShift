@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QGridLayout, QHBoxLayout, Q
                                QPushButton, QSlider, QVBoxLayout)
 
 from . import __version__
-from .util import CONFIG, linux_module
+from .util import CONFIG
 from .window import GlassWindow
 
 IS_WIN = sys.platform == "win32"
@@ -63,8 +63,8 @@ def autostart_enabled() -> bool:
         from . import platform_mac
         return platform_mac.autostart_enabled()
     if IS_LINUX:
-        lx = linux_module()
-        return lx is not None and lx.autostart_enabled()
+        from . import platform_linux
+        return platform_linux.autostart_enabled()
     if not IS_WIN:
         return False
     import winreg
@@ -82,9 +82,8 @@ def set_autostart(on: bool):
         platform_mac.set_autostart(on)
         return
     if IS_LINUX:
-        lx = linux_module()
-        if lx is not None:
-            lx.set_autostart(on)
+        from . import platform_linux
+        platform_linux.set_autostart(on)
         return
     if not IS_WIN:
         return

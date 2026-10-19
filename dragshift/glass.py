@@ -10,8 +10,6 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QImage, QLinearGradient,
                            QPainter, QPainterPath, QPen, QPixmap, QRadialGradient)
 
-from .util import linux_module
-
 IS_LINUX = sys.platform.startswith("linux")
 
 # Rainbow stops for the iridescent rim (soft, pastel-ish so it reads as "glass").
@@ -242,8 +240,8 @@ def exclude_from_capture(hwnd: int) -> bool:
         from . import platform_mac
         return platform_mac.OK      # macOS: we capture "below our window" instead
     if IS_LINUX:
-        lx = linux_module()         # Linux: the shell extension captures without us
-        return lx is not None and lx.extension_available()
+        from . import platform_linux
+        return platform_linux.extension_available()   # the shell extension captures without us
     if sys.platform != "win32" or os.environ.get("DRAGSHIFT_RECORDING"):
         return False
     try:
@@ -291,8 +289,8 @@ def grab_screen(x: int, y: int, w: int, h: int, below_window: int = 0):
             if im is not None:
                 return im
     elif IS_LINUX:
-        lx = linux_module()
-        im = lx.capture(x, y, w, h, exclude_self=bool(below_window)) if lx is not None else None
+        from . import platform_linux
+        im = platform_linux.capture(x, y, w, h, exclude_self=bool(below_window))
         if im is not None:
             return im
     from PySide6.QtCore import QPoint

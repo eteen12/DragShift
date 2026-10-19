@@ -10,8 +10,6 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from dragshift import util
-
 LINUX = sys.platform.startswith("linux")
 linux_only = pytest.mark.skipif(not LINUX, reason="Linux dispatch")
 
@@ -30,7 +28,7 @@ def qapp():
 
 # ---------------------------------------------------------------- module
 def test_import_needs_no_dbus_libraries():
-    code = ("import sys, dragshift.platform_linux as m; assert m.OK is True; "
+    code = ("import sys, dragshift.platform_linux; "
             "bad = sorted(n for n in sys.modules if n.split('.')[0] in "
             "('gi', 'dbus', 'jeepney', 'dbus_next', 'dbus_fast', 'PySide6')); "
             "assert not bad, bad")
@@ -48,8 +46,6 @@ def test_fallbacks(lx, tmp_path):
     assert lx.set_autostart(True) is None
     assert lx.set_autostart(False) is None
     assert lx.reveal(tmp_path / "x.png") is False
-    assert lx.has_tray() is False
-    assert lx.soffice_binary() is None
 
 
 def test_key_masks_are_clutter_modifiers(lx):
@@ -57,29 +53,34 @@ def test_key_masks_are_clutter_modifiers(lx):
     assert lx.BUTTON1_MASK == 256
 
 
-# ---------------------------------------------------------------- dispatch helper
-@pytest.mark.parametrize("plat", ["win32", "darwin"])
-def test_helper_never_imports_module_elsewhere(monkeypatch, plat):
-    import dragshift
-    monkeypatch.delitem(sys.modules, "dragshift.platform_linux", raising=False)
-    monkeypatch.delattr(dragshift, "platform_linux", raising=False)
-    monkeypatch.setattr(sys, "platform", plat)
-    assert util.linux_module() is None
-    assert "dragshift.platform_linux" not in sys.modules
+# ---------------------------------------------------------------- never imported elsewhere
+NOT_LINUX = """
+import sys
+if sys.platform.startswith("linux"):
+    sys.platform = "darwin"          # simulate macOS before anything is imported
+from PySide6.QtWidgets import QApplication
+qa = QApplication([])
+from dragshift import glass, radial, settings, toasts, trigger
+w = trigger.DragShiftWatcher(lambda: False, lambda: False)
+w.start()
+glass.exclude_from_capture(0)
+glass.grab_screen(0, 0, 10, 10)
+settings.autostart_enabled()
+radial.RadialMenu(lambda p: {}, lambda p: "")
+assert w._linux is None
+assert "dragshift.platform_linux" not in sys.modules
+print("OK")
+"""
 
 
-def test_helper_returns_module_on_linux(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "linux")
-    from dragshift import platform_linux
-    assert util.linux_module() is platform_linux
-    monkeypatch.setattr(platform_linux, "OK", False)
-    assert util.linux_module() is None
-
-
-def test_is_linux_constants():
-    from dragshift import app, glass, radial, settings, toasts, trigger
-    for mod in (app, glass, radial, settings, toasts, trigger):
-        assert mod.IS_LINUX is LINUX, mod.__name__
+def test_module_never_imported_off_linux(tmp_path):
+    """On Windows/macOS (simulated as macOS on a Linux host) no dispatch point imports it."""
+    import os
+    root = Path(__file__).resolve().parent.parent
+    env = dict(os.environ, HOME=str(tmp_path), QT_QPA_PLATFORM="offscreen")
+    r = subprocess.run([sys.executable, "-c", NOT_LINUX], cwd=root, env=env,
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and r.stdout.strip().endswith("OK"), r.stderr
 
 
 # ---------------------------------------------------------------- trigger
