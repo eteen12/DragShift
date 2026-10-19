@@ -99,6 +99,14 @@ disable-lock-screen=true
 enabled=false
 """
 
+# Ubuntu's desktop-icons layout (ubuntu-settings' 10_ubuntu-settings.gschema.override,
+# section [org.gnome.shell.extensions.ding:ubuntu]): icons in the bottom-right corner, no
+# Trash or volume icons. That override only applies when XDG_CURRENT_DESKTOP names ubuntu
+# and ubuntu-settings is installed (the Docker image boots the ubuntu mode without it), so
+# every session seeds it to get the same desktop, and file-icon positions, everywhere.
+UBUNTU_DING_SETTINGS = (("start-corner", "'bottom-right'"), ("show-trash", "false"),
+                        ("show-volumes", "false"))
+
 
 class SessionError(RuntimeError):
     """The session could not be started (the message carries the shell log tail)."""
@@ -459,8 +467,13 @@ class Session:
     def _seed_dconf(self, config_home: Path, enabled: list[str]) -> None:
         keyfiles = self.root / "dconf-seed"
         keyfiles.mkdir()
-        (keyfiles / "00-session").write_text(_DCONF_SEED.format(
-            enabled="[" + ", ".join(f"'{u}'" for u in enabled) + "]" if enabled else "@as []"))
+        seed = _DCONF_SEED.format(
+            enabled="[" + ", ".join(f"'{u}'" for u in enabled) + "]" if enabled else "@as []")
+        ding = (SYSTEM_EXTENSIONS / "ding@rastersoft.com").is_dir()
+        if ding:
+            seed += "\n[org/gnome/shell/extensions/ding]\n" + "".join(
+                f"{k}={v}\n" for k, v in UBUNTU_DING_SETTINGS)
+        (keyfiles / "00-session").write_text(seed)
         (config_home / "dconf").mkdir()
         if shutil.which("dconf"):
             subprocess.run(["dconf", "compile", str(config_home / "dconf" / "user"),
@@ -472,7 +485,8 @@ class Session:
                 ["org.gnome.desktop.session", "idle-delay", "0"],
                 ["org.gnome.desktop.screensaver", "lock-enabled", "false"],
                 ["org.gnome.desktop.lockdown", "disable-lock-screen", "true"],
-            ]
+            ] + [["org.gnome.shell.extensions.ding", k, v]
+                 for k, v in (UBUNTU_DING_SETTINGS if ding else ())]
 
     def _spawn(self, cmd, env) -> subprocess.Popen:
         p = subprocess.Popen(cmd, env=env, stdin=subprocess.DEVNULL, stdout=self._log,

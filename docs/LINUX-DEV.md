@@ -91,14 +91,17 @@ GNOME 46 refuses `org.gnome.Shell.Screenshot` to callers that are not allowliste
 tests use a test-only extension, `dragshift-test@eteen12.github.io`
 (`tests/linux/ext/`). It owns `io.github.eteen12.DragShiftTest` on the session's private
 bus and offers `Version`, `Screenshot(path)`, `ScreenshotArea(x, y, w, h, path)`,
-`ListWindows`, `ActivateWindow(id)`, `GetPointer` and the input methods below.
+`ListWindows`, `ActivateWindow(id)`, `MoveWindow(id, x, y, w, h)`, `GetPointer` and the
+input methods below.
 
 - `Session(helper=True)` (CLI: `--helper`) copies it into the session's temporary
   `XDG_DATA_HOME` and enables it. The shared `gnome_session` fixture always does this.
   Nothing installs it anywhere else, and it must never go on a real desktop.
 - `tests/linux/shell.py` is the client. The `shell_helper` fixture gives a ready
   `ShellHelper`: `screenshot()`, `screenshot_area(...)`, `list_windows()`,
-  `wait_for_window(wm_class=...)`, `activate_window(id)`, `get_pointer()`.
+  `wait_for_window(wm_class=...)`, `activate_window(id)`, `move_window(id, x, y, w, h)`
+  (unmaximizes, then waits until the frame is there; Wayland clients cannot place
+  themselves) and `get_pointer()`.
 - The venv has no `gi`, so the client runs one bridge process (system `python3` with
   `python3-gi`, inside the session environment) and exchanges JSON lines with it.
 - Screenshots are only written inside the session root (`/tmp/dragshift-session-*`); by
@@ -137,12 +140,52 @@ and runs from a launcher session root (`/tmp/dragshift-session-*`).
   lines, and its `ProbeWindow` runs it in a session. It uses Xwayland (`xcb`) when Qt can
   load that plugin, and native Wayland otherwise. On a desktop without `libxcb-cursor0`
   that means Wayland; the Docker image runs it on xcb.
+- The probe also accepts drops from other apps and logs `dragEnter`, `dragMove`,
+  `dragLeave` and `drop` with the offered MIME types, `urls()`, the raw `text/uri-list`,
+  the proposed, possible and answered actions. By default it answers `CopyAction`, like
+  DragShift's menu (`ProbeWindow(..., drop_action="proposed"|"ignore")` changes that).
+  `probe.move(x, y, w, h)` puts it somewhere else.
 - `tests/linux/test_inject.py` also proves the isolation. The input methods are served by
   the isolated shell's pid on its private bus, no session process holds `/dev/input/*` or
   `/dev/uinput`, and `/proc/bus/input/devices` does not change. The real desktop's idle
   time keeps growing while input is injected; this check is a read-only
   `org.gnome.Mutter.IdleMonitor.GetIdletime` call, skipped without a real session or while
   the desktop is in use.
+
+### Files and desktop icons
+
+`tests/linux/files.py` opens folders in Files (Nautilus), puts files on the DING desktop of
+the session's HOME and returns where a named file's icon is on the stage, so tests can
+start real drags from there:
+
+```python
+files = Files(gnome_session, shell_helper)
+folder = files.make_folder("pics", {"Photo.jpg": data})
+files.open_folder(folder)            # new window, moved to NAUTILUS_RECT and focused
+start = files.icon_center("Photo.jpg", "nautilus")
+files.put_on_desktop({"Photo.jpg": data})
+start = files.icon_center("Photo.jpg", "desktop")
+inject.drag_to(shell_helper, *probe.center(), start=start, hold="Shift_L")
+files.close()                        # nautilus -q
+```
+
+- Lookups go through AT-SPI: the session's own accessibility bus is activated on its
+  private bus. The match is on the exact file name (`Photo.jpg` never matches
+  `Photo (1).jpg`). The point is the centre of the item's icon image. A Wayland client does not
+  know its window position, so the extents are taken in window coordinates and the
+  frame from `ListWindows` is added.
+- Without an accessibility bus (or when the app exports no tree) a fallback answers and
+  logs a warning: Nautilus is opened in list view and rows come from measured constants,
+  and DING icons from the position DING stores in `metadata::nautilus-icon-position`.
+  `files.method` says which path answered.
+- `icon_center` raises `FilesError` when the icon is missing, scrolled out of its window
+  or covered by another window (for desktop icons, by any window).
+- Every session seeds Ubuntu's DING layout (icons in the bottom-right corner, no Trash or
+  volume icons), so icon positions are the same on the desktop and in the Docker image.
+- In `test_files.py`, the drags run against the probe under native Wayland and, where Qt loads
+  xcb (the Docker image), under Xwayland. With Shift held, Xwayland's bridge only offers
+  `MoveAction`, but the source file stays in both cases. Qt never sees Shift in a drop
+  event, because the target has no keyboard focus during a drag.
 
 ### The same tests in Docker (CI parity)
 

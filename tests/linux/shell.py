@@ -16,6 +16,7 @@ Usage::
         png = shell.screenshot()                       # Path under the session root
         win = shell.wait_for_window(wm_class="org.gnome.Nautilus")
         shell.activate_window(win["id"])
+        shell.move_window(win["id"], 90, 150, 760, 560)  # frame x, y, w, h
         shell.move_pointer(500, 400)                   # input: see tests/linux/inject.py
 
 This file is also the bridge (`python3 -I shell.py --bridge`), so the module level must
@@ -43,6 +44,7 @@ SIGNATURES = {
     "ScreenshotArea": "(iiiis)",
     "ListWindows": "",
     "ActivateWindow": "(t)",
+    "MoveWindow": "(tiiii)",
     "GetPointer": "",
     "MovePointer": "(ii)",
     "Button": "(ub)",
@@ -177,6 +179,28 @@ class ShellHelper:
     def activate_window(self, window_id: int) -> bool:
         """Activate by ListWindows `id` or X11 window id; False if no such window."""
         return self.call("ActivateWindow", window_id)[0]
+
+    def move_window(self, window_id: int, x: int, y: int, width: int, height: int,
+                    timeout: float = 5.0) -> tuple[int, int, int, int]:
+        """Put a window's frame at (x, y, width, height) (unmaximizing it first) and wait
+        until ListWindows reports that frame and it stays put. Returns the final frame;
+        Mutter may constrain it (minimum size, title bar on screen), in which case this
+        returns what the window settled at after `timeout`."""
+        if not self.call("MoveWindow", window_id, x, y, width, height)[0]:
+            raise HelperError(f"MoveWindow: no window with id {window_id}")
+        want = (x, y, width, height)
+        deadline = time.monotonic() + timeout
+        last, stable = None, 0
+        while True:
+            frame = next((w["frame"] for w in self.list_windows() if w["id"] == window_id),
+                         None)
+            if frame is None:
+                raise HelperError(f"window {window_id} disappeared while moving")
+            stable = stable + 1 if frame == last else 0
+            last = frame
+            if (frame == want and stable >= 2) or time.monotonic() > deadline:
+                return frame
+            time.sleep(0.05)
 
     def get_pointer(self) -> tuple[int, int, int]:
         """(x, y, Clutter modifier mask) from global.get_pointer()."""

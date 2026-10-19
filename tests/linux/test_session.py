@@ -14,9 +14,9 @@ import pytest
 
 from tests.linux.conftest import REAL_ENV, require_session_tools
 from tests.linux import session as session_mod
-from tests.linux.session import (MARKER, SYSTEM_EXTENSIONS, UBUNTU_DEFAULT_EXTENSIONS, Session,
-                                 SessionError, _pids_with_runtime_dir, reap_stale_sessions,
-                                 ubuntu_mode)
+from tests.linux.session import (MARKER, SYSTEM_EXTENSIONS, UBUNTU_DEFAULT_EXTENSIONS,
+                                 UBUNTU_DING_SETTINGS, Session, SessionError,
+                                 _pids_with_runtime_dir, reap_stale_sessions, ubuntu_mode)
 
 ROOT = Path(__file__).resolve().parents[2]
 SYSTEM_DING = "gjs /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/ding.js"
@@ -150,6 +150,17 @@ def test_nautilus_starts_in_the_session(gnome_session, tmp_path):
         out = p.communicate(timeout=10)[0]
     assert "Failed to open display" not in out
     assert "Failed to open display" not in s.log_path.read_text(errors="replace")
+
+
+@gnome
+def test_desktop_icons_use_ubuntus_layout_in_every_mode(gnome_session):
+    """DING puts icons bottom-right without Trash/volume icons, as on Ubuntu, also where
+    Ubuntu's own settings override does not apply (the Docker image)."""
+    if not (SYSTEM_EXTENSIONS / "ding@rastersoft.com").is_dir():
+        pytest.skip("desktop-icons-ng (DING) is not installed")
+    for key, value in UBUNTU_DING_SETTINGS:
+        r = gnome_session.run(["gsettings", "get", "org.gnome.shell.extensions.ding", key])
+        assert r.stdout.strip() == value, (gnome_session.mode, key, r.stdout, r.stderr)
 
 
 # ------------------------------------------------------------------ lifecycle
