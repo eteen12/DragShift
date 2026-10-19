@@ -1,0 +1,18 @@
+{
+ "scale": 2,
+ "where": "files",
+ "tl": [
+  310,
+  250
+ ],
+ "capture_ms": 27.4,
+ "screen_vs_glass": 0.04162689670920372,
+ "corr_glass_behind": 0.9182611218667597,
+ "corr_frost_behind": 0.7046190989262183,
+ "glass_vs_behind": 7.5121564865112305,
+ "glass_vs_frost": 46.20798873901367,
+ "std_behind": 19.621294021606445,
+ "std_glass": 12.966690063476562,
+ "std_frost": 13.862926483154297,
+ "backdrop_vs_behind": 0.6343374848365784
+}

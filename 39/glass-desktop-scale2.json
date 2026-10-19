@@ -1,0 +1,18 @@
+{
+ "scale": 2,
+ "where": "desktop",
+ "tl": [
+  950,
+  250
+ ],
+ "capture_ms": 68.5,
+ "screen_vs_glass": 0.01641213335096836,
+ "corr_glass_behind": 0.8529837965017977,
+ "corr_frost_behind": -0.03290391179944133,
+ "glass_vs_behind": 6.9648823738098145,
+ "glass_vs_frost": 31.777984619140625,
+ "std_behind": 24.68853759765625,
+ "std_glass": 26.234378814697266,
+ "std_frost": 18.294343948364258,
+ "backdrop_vs_behind": 0.2608333230018616
+}

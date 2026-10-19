@@ -1,0 +1,6 @@
+{
+ "scale": 1,
+ "warm_up_ms": 216,
+ "wallpaper_fallback_ms": 4.5,
+ "line": "menu: wallpaper fallback, 4.5 ms"
+}
