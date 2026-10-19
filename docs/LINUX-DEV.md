@@ -24,7 +24,8 @@ sudo apt-get install -y libx11-xcb1 libxcb1 libxcb-cursor0 libxcb-icccm4 libxcb-
 ```
 
 `libxcb-cursor0` is not part of a default Ubuntu 24.04 desktop install. Without it Qt
-refuses to load the `xcb` platform plugin.
+refuses to load the `xcb` platform plugin. DragShift itself runs as a native Wayland client on GNOME
+(`docs/linux/display-backend.md`), so only the xcb comparison tests need it.
 
 ## Environment and tests
 
@@ -187,6 +188,21 @@ files.close()                        # nautilus -q
   `MoveAction`, but the source file stays in both cases. Qt never sees Shift in a drop
   event, because the target has no keyboard focus during a drag.
 
+### Display backend evidence
+
+`tests/linux/test_display_backend.py` backs `docs/linux/display-backend.md`. It shows a
+window with the radial menu's flags (`tests/linux/menu_probe.py`) under native Wayland,
+placed by the extension's `PlaceWindow`, and under Xwayland, next to Files and the
+desktop. It checks placement, stacking, focus, latency, real Shift+drags, `grabWindow`,
+the fullscreen-overlay alternative and a 200 % monitor. The xcb cases skip where Qt
+can't load xcb. To run them here without installing anything, point
+`DRAGSHIFT_XCB_LIBS` at a directory that holds `libxcb-cursor.so.0`, e.g. one extracted
+with `apt-get download libxcb-cursor0 && dpkg-deb -x libxcb-cursor0_*.deb <dir>`.
+
+```sh
+DRAGSHIFT_XCB_LIBS=<dir>/usr/lib/x86_64-linux-gnu uv run pytest -s -m gnome tests/linux/test_display_backend.py
+```
+
 ### The same tests in Docker (CI parity)
 
 `tests/linux/docker/run.sh` builds an `ubuntu:24.04` image with GNOME Shell 46, Xwayland,
@@ -232,6 +248,8 @@ The app gets the global pointer and screen capture on Wayland from its own GNOME
 extension, `extension/dragshift@eteen12.github.io/`. It owns `io.github.eteen12.DragShift`
 on the session bus, and its interface is in `dbus.xml`. `dragshift/platform_linux.py` is
 the Python client (`jeepney`, 200 ms timeout, `None` when the extension doesn't answer).
+`PlaceWindow` (in `placement.js`, client `platform_linux.place_window`) places, raises and
+un-focuses the caller's own windows, since a Wayland client can't do that itself.
 
 ```sh
 extension/build.sh                 # → dist/dragshift@eteen12.github.io.shell-extension.zip
