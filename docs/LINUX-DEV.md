@@ -359,6 +359,50 @@ or `python -m dragshift` from a checkout named by `DRAGSHIFT_SRC`.
     pointer.
   - Neither touches your own `~/.local/share/nautilus/scripts`.
 
+## Installing: install-linux.sh
+
+`install-linux.sh` at the repo root installs DragShift for the current user, without sudo
+(#66). Run from a checkout, it installs that checkout. Piped from curl, it downloads the
+fork, with `git clone --depth 1`, or the tarball without git. Re-running it updates.
+
+- **Layout.** `${XDG_DATA_HOME:-~/.local/share}/dragshift/{src,venv}` (uv when present,
+  else `python3 -m venv` + pip), the launcher `~/.local/bin/dragshift` with `DATA=` set to
+  that absolute folder (a regular 0755 file; its last line stays #93's form),
+  `applications/io.github.eteen12.DragShift.desktop` with the absolute launcher in `Exec=`
+  (`~/.local/bin` is on PATH only after a login that found it) plus
+  `update-desktop-database`, the 256 px icon, `nautilus/scripts/DragShift…` (also in
+  `~/.local/share/nautilus/scripts` when `XDG_DATA_HOME` is elsewhere, for DING), the
+  extension through `extension/build.sh` + `gnome-extensions install --force`, and
+  autostart through the installed app's own `platform_linux.set_autostart`.
+- **Extension on.** `gnome-extensions enable` fails for an extension that the running shell
+  hasn't loaded (GNOME 46 loads new ones only at login), so the installer adds the UUID to
+  `org.gnome.shell enabled-extensions` itself and asks you to log out and back in.
+- **Autostart.** A first install turns it on, and an update keeps your Settings choice.
+  `--autostart` and `--no-autostart` decide explicitly. With the launcher installed, the
+  Welcome window's box starts from the entry, so "Got it" doesn't undo `--no-autostart`.
+- **Updates.** A running DragShift of this install is stopped and started again. The venv is
+  kept unless its Python is gone or another version. Unchanged files are not rewritten.
+- **System packages.** The installer checks them with `dpkg-query`: python3-venv (without
+  uv), the Qt libraries for offscreen and native Wayland, and desktop-file-utils. If any is
+  missing, it prints the `sudo apt install …` line and exits 1. `libxcb-cursor0` is not
+  needed.
+- **Options.** `--no-start`, `--from-dir <checkout>`, `--uninstall` (a stub until #67).
+- **Download overrides.** `DRAGSHIFT_REPO`, `DRAGSHIFT_REF` and `DRAGSHIFT_TARBALL` change
+  where the download comes from. The tests use `file://` URLs.
+
+```sh
+uv run pytest tests/test_install_script.py               # options, apt line, quoting; no session
+uv run pytest -s tests/linux/test_install.py             # installs in sessions, then logs in again
+```
+
+`tests/linux/test_install.py` installs into a session's temporary HOME, then boots a second
+session on the same root (`Session(root=new_root())`: same HOME, XDG dirs and dconf, like
+logging out and back in). In that second session it checks that the extension is
+ACTIVE, that the autostart entry starts the app (launched through GDesktopAppInfo as
+gnome-session does), and that a Shift+drag converts a file. It also starts the app from
+the app grid and covers Open With and the Scripts menu. Set `DRAGSHIFT_TEST_CACHE=<dir>`
+to keep the uv/pip downloads between runs.
+
 ## DOCX → PDF and LibreOffice
 
 On Linux, DOCX → PDF uses LibreOffice when it is installed (`soffice` or `libreoffice` on

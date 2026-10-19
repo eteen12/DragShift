@@ -312,3 +312,28 @@ def test_ubuntu_mode_needs_mode_file_and_theme(tmp_path, monkeypatch):
     theme.parent.mkdir(parents=True)
     theme.write_bytes(b"")
     assert ubuntu_mode()
+
+
+@gnome
+def test_logging_in_again_on_the_same_root():
+    """Session(root=...) boots a new shell on the previous session's HOME, XDG dirs and
+    dconf, like logging out and back in (#66); the root outlives stop()."""
+    require_session_tools()
+    root = session_mod.new_root()
+    try:
+        with Session(root=root) as s:
+            first_rt = s.runtime_dir
+            assert s.run(["gsettings", "set", "org.gnome.desktop.interface",
+                          "clock-show-seconds", "true"]).returncode == 0
+            (Path(s.env()["HOME"]) / "kept.txt").write_text("hello")
+        assert root.is_dir() and not first_rt.exists()
+        with Session(root=root) as s:
+            assert s.runtime_dir != first_rt
+            assert (Path(s.env()["HOME"]) / "kept.txt").read_text() == "hello"
+            r = s.run(["gsettings", "get", "org.gnome.desktop.interface", "clock-show-seconds"])
+            assert r.stdout.strip() == "true"
+        assert (root / "gnome-shell.1.log").exists() and (root / "gnome-shell.log").exists()
+        with pytest.raises(session_mod.SessionError, match="not a session root"):
+            Session(root=root.with_name("elsewhere")).start()
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

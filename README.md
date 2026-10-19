@@ -25,6 +25,14 @@ Or download the .dmg yourself:
 
 Open the .dmg and drag **DragShift** into Applications. DragShift lives in the menu bar and has no Dock icon. You can also right-click any file → **Open With → DragShift**.
 
+**Linux (Ubuntu 24.04, GNOME on Wayland):** paste this into a terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eteen12/DragShift/main/install-linux.sh | bash
+```
+
+It installs DragShift for your user only, with no sudo: the app, an app grid entry, **Open With → DragShift**, Files' right-click **Scripts → DragShift…**, the small GNOME Shell extension that Shift+drag needs on Wayland, and start at login ([see what it does](install-linux.sh)). Afterwards, **log out and back in once** so GNOME loads the extension. Run the same line again to update. To skip start at login, end the line with `bash -s -- --no-autostart`. If system packages are missing, it prints the `sudo apt install …` line to run first.
+
 > **First launch on Windows:** SmartScreen may warn because the app isn't code-signed yet. Click **More info → Run anyway**.
 >
 > **First launch on Mac, if you used the .dmg instead of the Terminal line:** macOS says *"Apple could not verify 'DragShift' is free of malware."* This happens with any app that hasn't paid for Apple's notarization; DragShift's code is all public in this repo. To open it:
