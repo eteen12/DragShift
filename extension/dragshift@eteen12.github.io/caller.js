@@ -3,8 +3,8 @@
 //
 // Every method but Version hands out something GNOME keeps from ordinary clients: screen
 // pixels (CaptureArea*), the global pointer and Shift/Ctrl/Alt state (GetPointer), a
-// global Escape grab (WatchEscape) and window placement (PlaceWindow). They answer only the
-// DragShift app, which is
+// global Escape grab (WatchEscape), window placement (PlaceWindow) and the monitors' work
+// areas (GetWorkArea). They answer only the DragShift app, which is
 // - a process of the same user (UnixUserID from the bus daemon), whose
 // - executable is a Python interpreter (/proc/<pid>/exe), and whose
 // - command line (/proc/<pid>/cmdline) runs the app: `python -m dragshift`,

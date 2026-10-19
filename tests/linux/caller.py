@@ -27,6 +27,7 @@ PROTECTED = {
     "CaptureAreaExcludingCaller": ("iiii", (0, 0, 10, 10)),
     "WatchEscape": ("b", (False,)),
     "PlaceWindow": ("sii", ("no such window", 0, 0)),
+    "GetWorkArea": ("ii", (0, 0)),
 }
 OPEN = {"Version": (None, ())}
 

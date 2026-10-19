@@ -118,8 +118,21 @@ def nautilus(ex_session, shell):
                                     for n, c in colours.items()})
         files.open_folder(folder, view="icon")
         inject.move(shell, 40, 860)                   # pointer out of the way
-        _settled(ex_session, shell, NAUTILUS_RECT)
+        # Placeholder icons can stay still for longer than _settled's 0.5 s before the
+        # thumbnailer runs, so wait for every picture's colour too.
+        deadline = time.monotonic() + 20
+        while not _shows_colours(_settled(ex_session, shell, NAUTILUS_RECT),
+                                 colours.values()):
+            assert time.monotonic() < deadline, "thumbnails never showed"
+            time.sleep(0.5)
         yield files
+
+
+def _shows_colours(im: Image.Image, colours, tolerance: int = 8) -> bool:
+    """Whether every colour in `colours` appears in `im` (within `tolerance`)."""
+    seen = [c for _, c in im.convert("RGB").getcolors(maxcolors=1 << 20)]
+    return all(any(max(abs(a - b) for a, b in zip(c, want)) <= tolerance for c in seen)
+               for want in colours)
 
 
 @pytest.fixture

@@ -163,6 +163,10 @@ class DragShiftService {
     // stack at its bottom right. A native Wayland client can't learn it: Qt's
     // availableGeometry() is the whole monitor there. Read-only, no side effects.
     GetWorkAreaAsync([x, y], invocation) {
+        this._callers.serve(invocation, () => this._workArea(x, y, invocation));
+    }
+
+    _workArea(x, y, invocation) {
         const layout = Main.layoutManager;
         let index = layout.monitors.findIndex(m =>
             x >= m.x && x < m.x + m.width && y >= m.y && y < m.y + m.height);

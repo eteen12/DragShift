@@ -322,8 +322,8 @@ later, so wait for the name before calling it.
 
 Everything but `Version` gives out what GNOME withholds from ordinary apps: screen pixels
 (`CaptureArea`, `CaptureAreaExcludingCaller`), the global pointer with the Shift/Ctrl/Alt
-and button state (`GetPointer`), a global Escape grab (`WatchEscape`) and window placement
-(`PlaceWindow`). GNOME 41+ allowlists its own screenshot API for that reason, so these
+and button state (`GetPointer`), a global Escape grab (`WatchEscape`), window placement
+(`PlaceWindow`) and the monitors' work areas (`GetWorkArea`). GNOME 41+ allowlists its own screenshot API for that reason, so these
 methods answer only the DragShift app (#93). `Version` stays open, so the app and the
 installer can find the extension. `caller.js` decides:
 
@@ -362,7 +362,8 @@ Tests run as pytest, not as DragShift. Only in a headless shell started by the t
 launcher (session root `/tmp/dragshift-session-*`, the same guard as the test helper's
 input injection) does the extension also let in pytest, `python -m tests.linux.<module>`
 and scripts in a `tests/linux` directory. `python -c`, other scripts and `gdbus` are
-refused there too. `tests/linux/caller.py` calls every method, and the tests run it under
+refused there too, so a test that drives app code in a process of its own puts it in a
+module (e.g. `python -m tests.linux.toast_driver`). `tests/linux/caller.py` calls every method, and the tests run it under
 different command lines:
 
 ```sh
