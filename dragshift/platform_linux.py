@@ -36,8 +36,23 @@ OBJECT_PATH = "/io/github/eteen12/DragShift"
 INTERFACE = "io.github.eteen12.DragShift"
 DBUS_TIMEOUT = 0.2   # seconds; a missing extension answers at once (ServiceUnknown)
 
-_bus = None
-_bus_lock = threading.Lock()
+
+class _Connection:
+    """A blocking session-bus connection, opened on first use and reopened after a
+    failure, one call at a time."""
+
+    def __init__(self):
+        self.bus = None
+        self.lock = threading.Lock()
+
+
+# _call's connection, used from the GUI thread (the trigger's GetPointer every 15 ms, the
+# glass windows' frame polls). A capture made from a worker thread uses its own (#107): on
+# this one it would hold the lock, and so the GUI thread, for as long as the capture takes
+# (150-280 ms for a large window at 200 %). The extension knows the caller by its pid, so
+# the second connection is DragShift as well.
+_MAIN = _Connection()
+_WORKER = _Connection()
 
 
 def _call(method: str, signature: str | None = None, *args, timeout: float = DBUS_TIMEOUT):
@@ -47,30 +62,37 @@ def _call(method: str, signature: str | None = None, *args, timeout: float = DBU
     return _request(method, signature, *args, timeout=timeout)[0]
 
 
+def _call_from_worker(method: str, signature: str | None = None, *args,
+                      timeout: float = DBUS_TIMEOUT):
+    """_call on the worker connection, for calls made off the GUI thread."""
+    return _request(method, signature, *args, timeout=timeout, conn=_WORKER)[0]
+
+
 def _request(method: str, signature: str | None = None, *args,
-             timeout: float = DBUS_TIMEOUT) -> tuple[tuple | None, str | None]:
+             timeout: float = DBUS_TIMEOUT,
+             conn: _Connection | None = None) -> tuple[tuple | None, str | None]:
     """_call's work: (reply arguments, None), or (None, D-Bus error name) for an error
-    reply, or (None, None) when there was no reply at all."""
-    global _bus
+    reply, or (None, None) when there was no reply at all. On `conn`, else _MAIN."""
+    conn = conn or _MAIN
     try:
         from jeepney import DBusAddress, HeaderFields, MessageType, new_method_call
         from jeepney.io.blocking import open_dbus_connection
     except ImportError:
         return None, None
-    with _bus_lock:
+    with conn.lock:
         try:
-            if _bus is None:
-                _bus = open_dbus_connection(bus="SESSION", auth_timeout=timeout)
+            if conn.bus is None:
+                conn.bus = open_dbus_connection(bus="SESSION", auth_timeout=timeout)
             msg = new_method_call(DBusAddress(OBJECT_PATH, BUS_NAME, INTERFACE),
                                   method, signature, args)
-            reply = _bus.send_and_get_reply(msg, timeout=timeout)
+            reply = conn.bus.send_and_get_reply(msg, timeout=timeout)
         except Exception:
-            if _bus is not None:
+            if conn.bus is not None:
                 try:
-                    _bus.close()
+                    conn.bus.close()
                 except Exception:
                     pass
-                _bus = None
+                conn.bus = None
             return None, None
     if reply.header.message_type != MessageType.method_return:
         return None, reply.header.fields.get(HeaderFields.error_name)
@@ -293,7 +315,8 @@ def _esc_call(router, on: bool) -> bool:
 CAPTURE_TIMEOUT = 0.5   # seconds; a 400×400 capture takes 10-20 ms, a busy shell longer
 
 
-def capture(x: int, y: int, w: int, h: int, exclude_self: bool = False):
+def capture(x: int, y: int, w: int, h: int, exclude_self: bool = False,
+            worker: bool = False):
     """Screen rect (logical px) as a PIL RGB image of exactly w×h, or None. The drag
     picture (Mutter's drag actor, or an X11 app's DND window) is ALWAYS left out, and so
     is the cursor. exclude_self additionally leaves DragShift's own windows out (every
@@ -303,11 +326,15 @@ def capture(x: int, y: int, w: int, h: int, exclude_self: bool = False):
     The extension clamps the rect to the screen; the part that was off it is filled
     with the nearest edge pixels. A HiDPI capture is scaled back to logical size.
     None when the extension doesn't answer (missing, disabled, timeout, or too old for
-    exclude_self)."""
+    exclude_self).
+
+    worker=True: called off the GUI thread. The call goes over a connection of its own,
+    so the GUI thread's calls never wait for it. Uses no Qt."""
     if w <= 0 or h <= 0:
         return None
     method = "CaptureAreaExcludingCaller" if exclude_self else "CaptureArea"
-    body = _call(method, "iiii", x, y, w, h, timeout=CAPTURE_TIMEOUT)
+    call = _call_from_worker if worker else _call
+    body = call(method, "iiii", x, y, w, h, timeout=CAPTURE_TIMEOUT)
     if not body or len(body) != 5:
         return None
     ax, ay, aw, ah, strips = body
@@ -368,12 +395,23 @@ def wallpaper_crop(x: int, y: int, w: int, h: int):
     (x, y); any part of the rect off that monitor is the background colour. No picture
     (`none`, a missing or undecodable file) gives a solid `primary-color`. None only when
     the GNOME settings can't be read (not GNOME) or there is no screen to map onto."""
-    import os
     from PIL import Image
     s = _read_settings()
     mon = _monitor_at(x, y)
     if s is None or mon is None or w <= 0 or h <= 0:
         return None
+    full, bg = _wallpaper(s, mon)
+    out = Image.new("RGB", (w, h), bg)
+    if full is not None:
+        out.paste(full, (mon[0] - x, mon[1] - y))
+    return out
+
+
+def _wallpaper(s: dict, mon: tuple[int, int, int, int]):
+    """(the picture as GNOME draws it on monitor `mon`, or None when there is none; the
+    background colour) for the settings `s`. Decoded once into _WALL_CACHE; a decode
+    already running (warm_wallpaper) is waited for, not repeated."""
+    import os
     mx, my, mw, mh = mon
     bg = _parse_color(s.get("primary-color", ""))
     dark = s.get("color-scheme") == "prefer-dark" and s.get("picture-uri-dark")
@@ -382,21 +420,49 @@ def wallpaper_crop(x: int, y: int, w: int, h: int):
         st = os.stat(path) if path and s.get("picture-options") != "none" else None
     except OSError:
         st = None    # deleted file or dangling symlink
-    key = (path, st and st.st_mtime_ns, st and st.st_size, bg, mon)
-    if st is not None and key not in _WALL_CACHE:
-        if len(_WALL_CACHE) >= 4:
-            _WALL_CACHE.clear()
-        _WALL_CACHE[key] = _decode_zoom(path, mw, mh, bg)
-    full = _WALL_CACHE.get(key)
-    out = Image.new("RGB", (w, h), bg)
-    if full is not None:
-        out.paste(full, (mx - x, my - y))
-    return out
+    if st is None:
+        return None, bg
+    key = (path, st.st_mtime_ns, st.st_size, bg, mon)
+    with _WALL_LOCK:
+        if key not in _WALL_CACHE:
+            if len(_WALL_CACHE) >= 4:
+                _WALL_CACHE.clear()
+            _WALL_CACHE[key] = _decode_zoom(path, mw, mh, bg)
+        return _WALL_CACHE[key], bg
+
+
+def warm_wallpaper():
+    """Decode the wallpaper of every monitor into wallpaper_crop's cache on a background
+    thread, so the first menu that falls back to the wallpaper doesn't pay for the decode
+    (160-220 ms for a 12 MP JPEG; a cached crop takes ~3 ms). Call on the GUI thread: the
+    settings and the screens are read here, the thread only decodes (PIL, no Qt objects).
+    Returns the thread, or None when there is nothing to warm (not GNOME, no screens)."""
+    import gc
+    from PySide6.QtGui import QGuiApplication
+    s = _read_settings()
+    if s is None or not isinstance(QGuiApplication.instance(), QGuiApplication):
+        return None
+    mons = [scr.geometry().getRect() for scr in QGuiApplication.screens()]
+    if not mons:
+        return None
+    gc.collect()     # no Qt garbage left for a collection on the thread to free (#88)
+
+    def work():
+        t0 = time.perf_counter()
+        for mon in mons:
+            _wallpaper(s, mon)
+        print(f"wallpaper: cache warmed for {len(mons)} monitor(s) in "
+              f"{(time.perf_counter() - t0) * 1e3:.0f} ms", flush=True)
+
+    t = threading.Thread(target=work, name="wallpaper-warm", daemon=True)
+    t.start()
+    return t
 
 
 # Wallpaper under a monitor, decoded once at monitor size: (path, mtime, size, colour,
 # monitor geometry) -> image, or None when the file didn't decode.
 _WALL_CACHE: dict = {}
+_WALL_LOCK = threading.Lock()
 WALLPAPER_KEYS = ("picture-uri", "picture-uri-dark", "picture-options", "primary-color")
 
 

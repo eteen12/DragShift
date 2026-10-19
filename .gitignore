@@ -5,3 +5,4 @@ dist/
 *.spec.bak
 .pytest_cache/
 .venv/
+e2e_linux_out/

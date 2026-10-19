@@ -9,12 +9,15 @@ the monitor and the glass backdrop from the extension's capture. It is started a
 caller check (#93) lets in inside a test session.
 
 Commands (JSON lines on stdin): popup {x, y} (centre; both left out = popup() with no
-position, i.e. at the extension's pointer), hide, quit. Log records (JSON lines):
-ready {pid, platform, screens, areas (each screen's work area from the extension, or
-null)}, shown {tl, visible, title, places, captures, source,
-backdrop}, hidden. `places` and `captures` are the extension calls popup() made
-(PlaceWindow title/x/y/reply, CaptureArea x/y/w/h); `backdrop` is the PNG of the raw
-backdrop the menu renders its glass from.
+position, i.e. at the extension's pointer; optional `paths`: click mode for those files,
+with a 4-petal ring; optional `frost`: no backdrop at all, the painted frost fallback),
+hide, quit. Log records (JSON lines): ready {pid, platform, screens, areas (each screen's
+work area from the extension, or null)}, shown {tl, visible, title, places, captures,
+source, backdrop, capture, glass}, hidden. `places` and `captures` are the extension calls
+popup() made (PlaceWindow title/x/y/reply, CaptureArea x/y/w/h); `backdrop` is the PNG of
+the raw backdrop the menu renders its glass from (after the cursor inpaint), `capture` the
+PNG of the extension's capture as it came back (before it), `glass` the PNG of the
+rendered liquid glass on screen (#39). The menu's own lines (`menu: ...`) go to stdout.
 """
 from __future__ import annotations
 
@@ -56,18 +59,25 @@ def main(argv=None) -> int:
         calls["places"].append([title, x, y, reply])
         return reply
 
+    last = {}
+
     def capture_(x, y, w, h, exclude_self=False):
         calls["captures"].append([x, y, w, h, exclude_self])
-        return capture(x, y, w, h, exclude_self)
+        last["capture"] = im = capture(x, y, w, h, exclude_self)
+        return im
 
     platform_linux.place_window, platform_linux.capture = place_window, capture_
+    grab_screen = glass.grab_screen
 
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     qpa = app.linux_qpa(os.environ, sys.argv)
     qapp = QApplication([sys.argv[0], *(["-platform", qpa] if qpa else [])])
     app.linux_setup(qapp)
-    menu = RadialMenu(lambda paths: {}, lambda paths: "")
+    from dragshift.radial import Item
+    ring = [Item(t) for t in ("PNG", "JPG", "WEBP", "PDF")]
+    menu = RadialMenu(lambda paths: {"Convert": ring} if paths else {},
+                      lambda paths: f"{len(paths)} file(s)")
     screens = [s.geometry() for s in qapp.screens()]
     write(type="ready", pid=os.getpid(), platform=qapp.platformName(),
           screens=[list(g.getRect()) for g in screens],
@@ -81,16 +91,25 @@ def main(argv=None) -> int:
         if cmd == "popup":
             for v in calls.values():
                 v.clear()
-            menu.popup(QPoint(c["x"], c["y"]) if "x" in c else None)
+            last.clear()
+            glass.grab_screen = (lambda *a, **k: None) if c.get("frost") else grab_screen
+            menu.popup(QPoint(c["x"], c["y"]) if "x" in c else None, c.get("paths"))
+            glass.grab_screen = grab_screen
             QThreadPool.globalInstance().waitForDone(5000)   # the glass renders
+            QApplication.processEvents()                     # ... and is handed over
             n += 1
-            backdrop = None
-            if menu._raw_backdrop is not None:
-                backdrop = f"{shots}-backdrop-{n}.png"
-                menu._raw_backdrop.save(backdrop)
+            files = {}
+            ring = len(menu.items) or 4
+            for key, im in (("backdrop", menu._raw_backdrop), ("capture", last.get("capture")),
+                            ("glass", menu.liquid.get(ring))):
+                if im is not None and not (key == "glass" and im.isNull()):
+                    files[key] = f"{shots}-{key}-{n}.png"
+                    im.save(files[key])
             write(type="shown", tl=[menu.x(), menu.y()], visible=menu.isVisible(),
                   title=menu.windowTitle(), places=calls["places"][:],
-                  captures=calls["captures"][:], source=glass.LAST_SOURCE, backdrop=backdrop)
+                  captures=calls["captures"][:], source=glass.LAST_SOURCE,
+                  backdrop=files.get("backdrop"), capture=files.get("capture"),
+                  glass=files.get("glass"))
         elif cmd == "hide":
             menu.close_menu()
             write(type="hidden")
@@ -154,11 +173,13 @@ class MenuDriver(MenuProbe):
         return next((w for w in self.shell.list_windows() if w["title"] == self.title
                      and w["pid"] == self.ready["pid"]), None)
 
-    def popup(self, x: int | None = None, y: int | None = None, settle: float = 0.3) -> dict:
-        """popup() centred on (x, y), or at the pointer when both are None; returns the
-        `shown` record once the shell lists the menu, plus `frame` (its frame then)."""
+    def popup(self, x: int | None = None, y: int | None = None, settle: float = 0.3,
+              **opts) -> dict:
+        """popup() centred on (x, y), or at the pointer when both are None (`opts`: paths,
+        frost); returns the `shown` record once the shell lists the menu, plus `frame` (its
+        frame then)."""
         mark = self.mark()
-        self.send(cmd="popup", **({} if x is None else {"x": x, "y": y}))
+        self.send(cmd="popup", **({} if x is None else {"x": x, "y": y}), **opts)
         shown = self.wait_for("shown", mark)
         deadline = time.monotonic() + 5
         while self.window() is None:

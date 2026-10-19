@@ -15,7 +15,8 @@ screenshot of the same screen rect taken before any DragShift window was there.
 - Partly off-screen after a move: the capture is clamped and padded.
 - A toast from a conversion has the backdrop of its slot; after the card under it closes
   and it slides down, it is refreshed there with DragShift's windows left out.
-- The cost of a refresh (frame poll, gc, capture, render) is measured and printed.
+- The cost of a refresh (frame poll, gc, capture, render) is measured and printed, and the
+  GUI thread is not blocked for the capture (#107).
 
 With DRAGSHIFT_EVIDENCE_DIR set, screenshots and side-by-sides are written there."""
 import os
@@ -313,9 +314,11 @@ def test_toast_from_a_convert_and_its_refresh_after_a_slide(env):
 
 
 def test_refresh_cost(env):
-    """What one refresh costs: the frame poll (every TRACK_MS while a window is open),
-    gc.collect, the capture (both on the GUI thread) and the render (a pool thread), for
-    the Crop window (820x680) and a toast (380x104)."""
+    """What one refresh costs, for the Crop window (820x680) and a toast (380x104): the
+    frame poll (every TRACK_MS while a window is open), gc.collect (GUI thread), the
+    capture and the render (pool threads), and what the GUI thread feels of it (#107): the
+    refresh() call, the longest gap of a 5 ms heartbeat timer while the refresh runs, and
+    the longest GetPointer call (the trigger's 15 ms poll) meanwhile."""
     shell, app, scale = env["shell"], env["app"], env["scale"]
     crop = _open_crop(env)
     card = app.cmd(cmd="toast", src=str(env["photo"]), keep=True, timeout=60)["title"]
@@ -330,10 +333,18 @@ def test_refresh_cost(env):
               f"gc {r['gc']['median']:.1f} ({r['gc']['max']:.1f}), "
               f"capture {r['capture']['median']:.1f} ({r['capture']['max']:.1f}), "
               f"render {r['render']['median']:.1f} ({r['render']['max']:.1f}), "
-              f"refresh to repaint {r['total']['median']:.1f} ({r['total']['max']:.1f})")
+              f"refresh to repaint {r['total']['median']:.1f} ({r['total']['max']:.1f}); "
+              f"GUI thread: refresh() call {r['call']['median']:.1f} ({r['call']['max']:.1f}), "
+              f"longest heartbeat gap {r['block']['median']:.1f} ({r['block']['max']:.1f}), "
+              f"blocked in all {r['blocked']['median']:.1f} ({r['blocked']['max']:.1f}), "
+              f"longest GetPointer {r['pointer']['median']:.1f} ({r['pointer']['max']:.1f})")
     for r in rows.values():
         assert r["total"]["n"] == 12 and r["poll"]["median"] < 5
         assert r["total"]["median"] < 1500
+        # #107: the capture no longer blocks the GUI thread (150-280 ms at scale 2 before),
+        # nor the trigger's poll; what is left is mostly gc.collect (#88)
+        assert r["call"]["median"] < 10 and r["block"]["median"] < 50
+        assert r["pointer"]["median"] < 50
     app.cmd(cmd="dismiss", title=card)
     app.cmd(cmd="close", title=crop)
     assert _wait(lambda: _window(shell, crop) is None)
