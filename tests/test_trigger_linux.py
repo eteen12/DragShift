@@ -60,8 +60,12 @@ def watcher(qapp, ext, monkeypatch):
     monkeypatch.setattr(trigger, "QCursor", NoCursor)
     clock = Clock()
     monkeypatch.setattr(trigger, "time", clock)
-    menu = {"visible": False, "got_drag": False}
-    w = trigger.DragShiftWatcher(lambda: menu["visible"], lambda: menu["got_drag"])
+    from PySide6.QtCore import QRect
+    # left_at: when the file drag left the menu (None: over it); rect: the menu's frame
+    menu = {"visible": False, "got_drag": False, "left_at": None, "rect": QRect(0, 0, 400, 400)}
+    w = trigger.DragShiftWatcher(
+        lambda: menu["visible"], lambda: menu["got_drag"],
+        menu_drag_left=lambda pos: menu["left_at"] if menu["rect"].contains(pos) else None)
     w.menu, w.clock, w.events = menu, clock, []
     w.show_menu.connect(lambda p: w.events.append(("show", p.x(), p.y())))
     w.toggle_ring.connect(lambda: w.events.append(("toggle",)))
@@ -264,3 +268,79 @@ def test_open_menu_never_goes_idle_before_closing(watcher):
     watcher.run(None)
     assert watcher.timer.isActive()
     assert _wait_for(watcher, ("hide",))
+
+
+# ---------------------------------------------------------------- drag cancel and Escape (#32)
+def _open_with_a_file(w):
+    w.run((100, 100, True, SHIFT), (130, 100, True, SHIFT))
+    w.menu.update(visible=True, got_drag=True)
+    w.events.clear()
+
+
+def test_cancel_over_the_menu_closes_it_after_the_grace(watcher, capsys):
+    """Escape mid-drag: Mutter cancels the drag and the menu gets a dragLeave with the
+    button still down and the pointer still on it (#24). After DRAG_CANCEL_GRACE with no
+    drop, the menu closes at once (the grace already waited for a drop)."""
+    from dragshift import trigger
+    _open_with_a_file(watcher)
+    watcher.menu["left_at"] = watcher.clock.now
+    assert watcher.run((140, 100, True, SHIFT)) == []
+    watcher.clock.now += trigger.DRAG_CANCEL_GRACE - 0.005
+    assert watcher.run((140, 100, True, SHIFT)) == []
+    watcher.clock.now += 0.01
+    assert watcher.run((140, 100, True, SHIFT)) == [("hide",)]      # no 120 ms delay
+    assert "trigger: drag cancelled over the menu" in capsys.readouterr().out
+    assert trigger.DRAG_CANCEL_GRACE == 0.15
+
+
+def test_drag_coming_back_within_the_grace_keeps_the_menu(watcher):
+    _open_with_a_file(watcher)
+    watcher.menu["left_at"] = watcher.clock.now
+    watcher.clock.now += 0.1
+    watcher.menu["left_at"] = None                 # dragEnter again
+    watcher.clock.now += 0.5
+    assert watcher.run((140, 100, True, SHIFT), (150, 100, True, SHIFT)) == []
+
+
+def test_drag_carried_out_of_the_menu_stays_until_the_button_goes_up(watcher):
+    """A leave with the pointer outside the menu is the user dragging away, not a cancel:
+    the menu stays (they may come back), as on Windows, and closes on release."""
+    _open_with_a_file(watcher)
+    watcher.menu["left_at"] = watcher.clock.now
+    watcher.clock.now += 1.0
+    assert watcher.run((450, 100, True, SHIFT), (600, 300, True, SHIFT)) == []
+    watcher.run((600, 300, False, 0))
+    assert ("hide",) not in watcher.events          # the ordinary drop delay
+    assert _wait_for(watcher, ("hide",))
+
+
+def test_release_after_a_leave_keeps_the_drop_delay(watcher):
+    _open_with_a_file(watcher)
+    watcher.menu["left_at"] = watcher.clock.now
+    watcher.clock.now += 1.0
+    watcher.run((140, 100, False, 0))
+    assert ("hide",) not in watcher.events
+    assert _wait_for(watcher, ("hide",))
+
+
+def test_no_cancel_before_a_file_entered(watcher):
+    watcher.run((100, 100, True, SHIFT), (130, 100, True, SHIFT))
+    watcher.menu.update(visible=True, got_drag=False, left_at=watcher.clock.now)
+    watcher.events.clear()
+    watcher.clock.now += 1.0
+    assert watcher.run((131, 100, True, SHIFT), (132, 101, True, SHIFT)) == []
+
+
+def test_without_a_menu_hook_nothing_is_cancelled(qapp, ext, monkeypatch):
+    """The two-argument watcher (as before #32): the button and the no-drag timeout only."""
+    from dragshift import trigger
+    monkeypatch.setattr(trigger, "QCursor", NoCursor)
+    w = trigger.DragShiftWatcher(lambda: True, lambda: True)
+    hides = []
+    w.hide_menu.connect(lambda: hides.append(1))
+    ext.feed(*[(140, 100, True, SHIFT)] * 5)
+    for _ in range(5):
+        w._tick()
+    assert hides == []
+    w.timer.stop()
+    w._probe.stop()

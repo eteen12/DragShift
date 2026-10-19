@@ -20,6 +20,10 @@ DRAG_THRESHOLD = 10   # px the mouse must travel with the button held
 # held at the press, the desktop (DING) otherwise often starts no drag at all (#31).
 LINUX_DRAG_THRESHOLD = 20
 NO_DRAG_TIMEOUT = 50  # ticks (≈ 0.75 s) to wait for a file drag to enter before hiding
+# Linux: s after the file drag left the menu with the pointer still on it and the button
+# still down before that counts as cancelled (Escape: Mutter cancels the drag, #24/#32).
+# A drop or the drag coming back within it wins.
+DRAG_CANCEL_GRACE = 0.15
 # Linux: without the shell extension there is no input state at all, so the watcher idles
 # and asks for it every PROBE_MS; after LOST_AFTER s of no data it goes back to that.
 PROBE_MS = 2000
@@ -32,10 +36,13 @@ class DragShiftWatcher(QObject):
     toggle_ring = Signal()
     hide_menu = Signal()
 
-    def __init__(self, menu_visible, menu_got_drag, parent=None):
+    def __init__(self, menu_visible, menu_got_drag, parent=None, menu_drag_left=None):
         super().__init__(parent)
         self.menu_visible = menu_visible
         self.menu_got_drag = menu_got_drag
+        # Linux: pos -> when the file drag left the menu with the pointer at pos still on
+        # it, else None (RadialMenu.drag_cancelled_since)
+        self.menu_drag_left = menu_drag_left
         self.enabled = True
         self.vk = VK_SHIFT
         self.key_name = "shift"
@@ -97,8 +104,18 @@ class DragShiftWatcher(QObject):
             self._pos = QPoint(int(x), int(y))
             self._lost_at = None
             key = self._linux.KEY_MASKS.get(self.key_name, self._linux.SHIFT_MASK)
-            return bool(left), bool(mask & key), False   # Escape: not reported yet
+            return bool(left), bool(mask & key), self._drag_cancelled(bool(left))
         return self._down(VK_LBUTTON), self._down(self.vk), self._down(VK_ESCAPE)
+
+    def _drag_cancelled(self, left: bool) -> bool:
+        """Linux's Escape: during a file drag Escape never reaches us, Mutter cancels the
+        drag (#24). What is left is the file having entered the menu, then leaving it while
+        the button is still down and the pointer still on the menu, and no drop or
+        re-entry for DRAG_CANCEL_GRACE."""
+        if not left or self.menu_drag_left is None or not self.menu_got_drag():
+            return False
+        t = self.menu_drag_left(self._pos)
+        return t is not None and time.monotonic() - t >= DRAG_CANCEL_GRACE
 
     def _tick(self):
         state = self._state()
@@ -109,7 +126,11 @@ class DragShiftWatcher(QObject):
         pos = self._pos if self._linux is not None else QCursor.pos()
 
         if self.menu_visible():
-            if not lbtn or esc:
+            if esc and self._linux is not None:
+                # the drag was cancelled DRAG_CANCEL_GRACE ago and no drop came: close now
+                print("trigger: drag cancelled over the menu, closing it", flush=True)
+                self.hide_menu.emit()
+            elif not lbtn or esc:
                 # drop happened (or was cancelled) – give the drop event a moment to land
                 QTimer.singleShot(120, self.hide_menu.emit)
             elif shift and not self._shift_was and self.menu_got_drag():
