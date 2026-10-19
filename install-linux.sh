@@ -74,6 +74,9 @@ put() {
   fi
 }
 
+# A DragShift source tree: the app and the Linux packaging files.
+is_checkout() { [ -f "$1/dragshift/__init__.py" ] && [ -f "$1/packaging/linux/dragshift" ]; }
+
 tree_sum() { [ -d "$1" ] && (cd "$1" && find . -type f -print0 | sort -z | xargs -0r sha256sum) | sha256sum; }
 
 main() {
@@ -94,7 +97,7 @@ main() {
 
   [ "$(uname -s)" = Linux ] || die "This installer is for Linux. On a Mac use install-mac.sh."
   [ "$(id -u)" -ne 0 ] || die "Run this as your normal user, without sudo: DragShift installs into your home folder."
-  [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not set to a folder."
+  [ -d "${HOME:-}" ] || die "HOME is not set to a folder."
 
   DATA_HOME=$(xdg_dir "${XDG_DATA_HOME:-}" "$HOME/.local/share")
   CONFIG_HOME=$(xdg_dir "${XDG_CONFIG_HOME:-}" "$HOME/.config")
@@ -141,8 +144,7 @@ EOF
   fi
   if [ -n "$from_dir" ]; then
     from_dir=$(cd "$from_dir" 2>/dev/null && pwd -P) || die "--from-dir: no such folder"
-    [ -f "$from_dir/dragshift/__init__.py" ] && [ -f "$from_dir/packaging/linux/dragshift" ] \
-      || die "$from_dir is not a DragShift checkout (no dragshift/ or packaging/linux/)."
+    is_checkout "$from_dir" || die "$from_dir is not a DragShift checkout (no dragshift/ or packaging/linux/)."
   fi
 
   local uv="" python="" py
@@ -211,8 +213,7 @@ EOF
         wget -qO- "$url" | tar -xzf - -C "$from" --strip-components=1 || die "Download failed: $url"
       fi
     fi
-    [ -f "$from/dragshift/__init__.py" ] && [ -f "$from/packaging/linux/dragshift" ] \
-      || die "The download has no DragShift app in it."
+    is_checkout "$from" || die "The download has no DragShift app in it."
   fi
   local version
   version=$(sed -n 's/^__version__ *= *["'\'']\([^"'\'']*\)["'\''].*/\1/p' "$from/dragshift/__init__.py")

@@ -3,6 +3,7 @@ the quoting helpers. Each run gets a temporary HOME and XDG dirs and no session 
 display, and every case here stops before anything is installed. The installs
 themselves run in the isolated session (tests/linux/test_install.py)."""
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -167,7 +168,26 @@ def test_bash_syntax():
     assert r.returncode == 0, r.stderr
 
 
-@pytest.mark.skipif(not shutil.which("shellcheck"), reason="shellcheck not installed")
+# The shellcheck releases install-linux.sh was checked with: Ubuntu 24.04's (the CI runner's)
+# 0.9.0, 0.10.0 and 0.11.0. Each release adds checks, so another one is skipped rather than
+# failed; run it by hand (`uvx --from shellcheck-py shellcheck -x install-linux.sh`).
+SHELLCHECK_TESTED = ((0, 9), (0, 10), (0, 11))
+
+
+def shellcheck_version() -> tuple[int, ...] | None:
+    exe = shutil.which("shellcheck")
+    if not exe:
+        return None
+    out = subprocess.run([exe, "--version"], capture_output=True, text=True).stdout
+    m = re.search(r"^version: (\d+)\.(\d+)", out, re.M)
+    return (int(m[1]), int(m[2])) if m else (0, 0)
+
+
 def test_shellcheck_is_clean():
+    version = shellcheck_version()
+    if version is None:
+        pytest.skip("shellcheck not installed")
+    if version not in SHELLCHECK_TESTED:
+        pytest.skip(f"shellcheck {version[0]}.{version[1]} untested (clean on 0.9-0.11)")
     r = subprocess.run(["shellcheck", "-x", str(SCRIPT)], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
