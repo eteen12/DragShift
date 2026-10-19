@@ -47,6 +47,9 @@ const IFACE = `
     <method name="ListWindows">
       <arg type="aa{sv}" direction="out" name="windows"/>
     </method>
+    <method name="RunningApps">
+      <arg type="as" direction="out" name="apps"/>
+    </method>
     <method name="ActivateWindow">
       <arg type="t" direction="in" name="id"/>
       <arg type="b" direction="out" name="found"/>
@@ -130,7 +133,7 @@ function findWindow(id) {
         windows.find(win => id !== 0 && xid(win) === id);
 }
 
-function describe(actor, stacking, focus) {
+function describe(actor, stacking, focus, tabList) {
     const w = actor.get_meta_window();
     const r = w.get_frame_rect();
     const x11 = w.get_client_type() === Meta.WindowClientType.X11;
@@ -150,6 +153,9 @@ function describe(actor, stacking, focus) {
         // The shell's app for the window: '<desktop file id>' when one matches its
         // app_id / WM_CLASS, else a 'window:N' stand-in (what the dock shows).
         app: new GLib.Variant('s', Shell.WindowTracker.get_default().get_window_app(w)?.get_id() ?? ''),
+        // Alt+Tab's list (Meta.TabList.NORMAL, all workspaces) and the dock's filter.
+        in_tab_list: new GLib.Variant('b', tabList.includes(w)),
+        skip_taskbar: new GLib.Variant('b', w.is_skip_taskbar()),
     };
 }
 
@@ -315,7 +321,13 @@ class Helper {
     // Bottom to top, in stacking order (the order of global.get_window_actors()).
     ListWindows() {
         const focus = global.display.focus_window;
-        return global.get_window_actors().map((actor, i) => describe(actor, i, focus));
+        const tabList = global.display.get_tab_list(Meta.TabList.NORMAL, null);
+        return global.get_window_actors().map((actor, i) => describe(actor, i, focus, tabList));
+    }
+
+    // Ids of the apps the shell counts as running (what the dock shows with a dot).
+    RunningApps() {
+        return Shell.AppSystem.get_default().get_running().map(app => app.get_id());
     }
 
     // id as for findWindow(). Main.activateWindow is the shell's own path (dash,

@@ -13,8 +13,15 @@
 // map/destroy animation (the app animates itself), and gives the keyboard focus straight
 // back to the window that had it: Mutter focuses a newly mapped Wayland window and the
 // target of a drop, and DragShift's menu and toasts must never keep the focus.
+//
+// When the app runs as the shell's own Wayland client (launcher.js, #95), its windows
+// report gnome-shell's pid, so windows are matched by windowPid(). Such a window whose
+// title has a rule (the menu, the toasts) also becomes dock-type as soon as its title is
+// set, before it maps: then it has no dock icon, no Alt+Tab entry and is never focused.
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
+import {isManaged, makeDock, windowPid} from './launcher.js';
 
 // Most titles one caller may keep rules for (the menu plus four toasts need five).
 const MAX_RULES = 32;
@@ -62,7 +69,7 @@ export class WindowPlacer {
             // Only windows already on screen: moving one before it has been shown is
             // what crashes Mutter (see the top of this file). One that is still on its
             // way picks the rule up in its `shown` handler.
-            if (window.get_pid() !== pid || window.get_title() !== title ||
+            if (windowPid(window) !== pid || window.get_title() !== title ||
                 !actor.is_mapped() || this._windows.get(window)?.pending)
                 continue;
             this._track(window).placed = true;
@@ -104,7 +111,7 @@ export class WindowPlacer {
     }
 
     _onCreated(window) {
-        const pid = window.get_pid();
+        const pid = windowPid(window);
         if (!this._rules.has(pid))
             return;
         // The title is not known yet, so every new window of a caller with rules skips
@@ -114,6 +121,17 @@ export class WindowPlacer {
             Main.wm.skipNextEffect(actor);
         const entry = this._track(window);
         entry.pending = true;
+        if (isManaged(window)) {
+            // Dock-type before the map (in `shown` it would already have the focus and
+            // have counted as a running app). Qt sets the title right after creating the
+            // window, before its first commit.
+            const dockIfPlaced = () => {
+                if (this._rules.get(pid)?.has(window.get_title()))
+                    makeDock(window);
+            };
+            entry.ids.push(window.connect('notify::title', dockIfPlaced));
+            dockIfPlaced();
+        }
         const shownId = window.connect('shown', () => {
             window.disconnect(shownId);
             entry.ids = entry.ids.filter(id => id !== shownId);

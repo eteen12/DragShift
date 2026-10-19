@@ -143,16 +143,19 @@ Option (c): native Wayland, placed by the extension.
 - **Click mode (#36):** the menu never holds the keyboard focus. Outside clicks have to
   come from the pointer state, as #36 already plans. `grabMouse` under Wayland was not
   measured here.
-- **Known wart:** while the menu or a toast is visible, the dock shows a DragShift app
-  icon and Alt+Tab lists the window. (c′) removes that but changes who starts the app.
-  Recorded as follow-up #95.
+- **Dock and Alt+Tab (#95):** under (c) alone, while the menu or a toast is visible, the
+  dock shows a DragShift app icon and Alt+Tab lists the window. #95 adds (c′) on top: the
+  app asks the extension to start it as a `Meta.WaylandClient` (`Launch`), and the
+  extension makes the placed windows dock-type before they map. See "Menu and toasts out
+  of the dock and Alt+Tab" in `docs/LINUX-DEV.md`. Without the installed launcher, or
+  without the extension, the app runs as in (c).
 
 ## Follow-ups
 
-- #95: keep DragShift's menu and toasts out of the dock and Alt+Tab. This uses (c′): the
-  extension launches the app as a `Meta.WaylandClient`, and `make_dock` or
-  `hide_from_window_list` applies to its menu and toast windows. It affects autostart
-  (#47) and the CLI hand-off (#50).
+- #95: keep DragShift's menu and toasts out of the dock and Alt+Tab with (c′).
+  `make_dock` runs when the window's title is set, before it maps; in `shown` it is too
+  late for the focus. Windows of such a client report gnome-shell's pid, so GNOME's Force
+  Quit would kill the shell; the extension kills a hung DragShift itself first.
 - Two monitors: `PlaceWindow` takes global stage coordinates, as `GetPointer` returns
   them. It was measured on one monitor only, because the session's DING layout assumes
   one; #34 covers the second monitor.

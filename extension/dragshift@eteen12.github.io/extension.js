@@ -2,8 +2,9 @@
 // Wayland withholds from ordinary clients. The interface is in dbus.xml.
 //
 // enable() exports the object and owns the bus name; disable() undoes both and drops the
-// window-placement rules (placement.js). Both are idempotent. Nothing in the shell (Main,
-// the stage) is patched.
+// window-placement rules (placement.js). Both are idempotent. An app started by Launch
+// (launcher.js) keeps running across disable(). Nothing in the shell (Main, the stage)
+// is patched.
 //
 // Every method but Version answers only the DragShift app (#93, caller.js): each goes
 // through this._callers.serve(), which replies AccessDenied to anyone else.
@@ -17,6 +18,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {Callers, isTestSession} from './caller.js';
+import {HangGuard, launch, windowPid} from './launcher.js';
 import {WindowPlacer} from './placement.js';
 
 const BUS_NAME = 'io.github.eteen12.DragShift';
@@ -49,6 +51,18 @@ class DragShiftService {
     PlaceWindowAsync([title, x, y], invocation) {
         this._callers.serve(invocation, pid => invocation.return_value(new GLib.Variant(
             '(b)', [this._placer.place(invocation.get_sender(), pid, title, x, y)])));
+    }
+
+    // Start the app as the shell's own Wayland client (#95), see launcher.js. Takes only
+    // whether to pass --quiet: what runs is fixed. True when it was started now or runs
+    // already.
+    LaunchAsync([quiet], invocation) {
+        this._callers.serve(invocation, () => {
+            const why = launch(quiet);
+            if (why)
+                console.log(`DragShift: not launching the app: ${why}`);
+            invocation.return_value(new GLib.Variant('(b)', [why === null]));
+        });
     }
 
     // See EscapeWatch below.
@@ -154,7 +168,10 @@ class DragShiftService {
     _windowActorsOf(pid) {
         if (!(pid > 0))
             return [];
-        return global.get_window_actors().filter(a => a.get_meta_window()?.get_pid() === pid);
+        return global.get_window_actors().filter(a => {
+            const window = a.get_meta_window();
+            return window && windowPid(window) === pid;
+        });
     }
 
     // ------------------------------------------------------------ GetWorkArea (#42)
@@ -251,6 +268,7 @@ export default class DragShiftExtension extends Extension {
         const xml = new TextDecoder().decode(bytes);
         this._callers = new Callers(isTestSession());
         this._placer = new WindowPlacer();
+        this._hangGuard = new HangGuard();
         this._service = new DragShiftService(this.metadata, this._callers, this._placer);
         this._dbusObject = Gio.DBusExportedObject.wrapJSObject(xml, this._service);
         const escape = new EscapeWatch(
@@ -279,6 +297,8 @@ export default class DragShiftExtension extends Extension {
         this._service = null;
         this._placer?.destroy();
         this._placer = null;
+        this._hangGuard?.destroy();
+        this._hangGuard = null;
         this._callers?.destroy();
         this._callers = null;
     }

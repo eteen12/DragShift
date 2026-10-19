@@ -8,6 +8,7 @@ but the standard library and jeepney.
 
     python -m tests.linux.caller             # print {method: "ok" | D-Bus error name}
     python -m tests.linux.caller hold-escape # WatchEscape(true), print the reply, keep it
+    python -m tests.linux.caller launch      # Launch(true), print the reply (#95)
 
 The bus is DBUS_SESSION_BUS_ADDRESS (the isolated session's when run through it).
 """
@@ -20,7 +21,8 @@ OBJECT_PATH = "/io/github/eteen12/DragShift"
 INTERFACE = "io.github.eteen12.DragShift"
 
 # Every method with harmless arguments: a 10x10 capture, Escape released (never grabbed),
-# a placement rule for a title no window has (dropped when this connection closes).
+# a placement rule for a title no window has (dropped when this connection closes), a
+# Launch where there is no launcher.
 PROTECTED = {
     "GetPointer": (None, ()),
     "CaptureArea": ("iiii", (0, 0, 10, 10)),
@@ -28,6 +30,8 @@ PROTECTED = {
     "WatchEscape": ("b", (False,)),
     "PlaceWindow": ("sii", ("no such window", 0, 0)),
     "GetWorkArea": ("ii", (0, 0)),
+    # no ~/.local/bin/dragshift in these sessions: answers False, starts nothing
+    "Launch": ("b", (True,)),
 }
 OPEN = {"Version": (None, ())}
 
@@ -55,6 +59,9 @@ def call_all(conn) -> dict:
 
 def main(argv) -> int:
     with connect() as conn:
+        if argv[1:2] == ["launch"]:         # Launch(quiet=True): print the reply
+            print(json.dumps(call(conn, "Launch", "b", (True,))), flush=True)
+            return 0
         if argv[1:2] == ["hold-escape"]:
             print(json.dumps(call(conn, "WatchEscape", "b", (True,))), flush=True)
             while True:                     # the grab lasts as long as this connection

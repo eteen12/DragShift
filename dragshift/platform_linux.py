@@ -161,6 +161,22 @@ def place_window(title: str, x: int, y: int) -> bool:
     return bool(body and body[0])
 
 
+# ---------------------------------------------------------------- managed start (#95)
+MANAGED_ENV = "DRAGSHIFT_MANAGED"   # set by the extension in the app it starts
+LAUNCH_TIMEOUT = 2.0                # seconds for the Launch call itself (it only spawns)
+
+
+def launch_app(quiet: bool) -> bool:
+    """Ask DragShift's shell extension to start the app as the shell's own Wayland
+    client, which lets it keep the menu and toasts out of the dock and Alt+Tab and never
+    focus them (extension/.../launcher.js). The extension only ever starts the installed
+    launcher ~/.local/bin/dragshift, with `--quiet` when `quiet`. True when it started it
+    now or it already runs; False without the extension, without a usable launcher, or
+    when the extension refuses this process. Never raises."""
+    body = _call("Launch", "b", bool(quiet), timeout=LAUNCH_TIMEOUT)
+    return bool(body and body[0])
+
+
 # ---------------------------------------------------------------- work area (#42)
 def work_area(x: int, y: int) -> tuple[int, int, int, int] | None:
     """`(x, y, width, height)` of the work area of the monitor that contains (x, y) (else

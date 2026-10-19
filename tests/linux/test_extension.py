@@ -58,9 +58,9 @@ def built_dir(built_zip, tmp_path_factory) -> Path:
 def test_build_zip_contents(built_zip):
     with zipfile.ZipFile(built_zip) as z:
         assert sorted(z.namelist()) == ["caller.js", "dbus.xml", "extension.js",
-                                        "metadata.json", "placement.js"]
+                                        "launcher.js", "metadata.json", "placement.js"]
         meta = json.loads(z.read("metadata.json"))
-        for name in ("extension.js", "caller.js", "placement.js", "dbus.xml"):
+        for name in ("extension.js", "caller.js", "placement.js", "launcher.js", "dbus.xml"):
             assert z.read(name) == (SRC / name).read_bytes(), name
     assert meta == {**json.loads((SRC / "metadata.json").read_text()),
                     "version-name": __version__}

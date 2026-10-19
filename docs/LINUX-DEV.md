@@ -112,7 +112,9 @@ GNOME 46 refuses `org.gnome.Shell.Screenshot` to callers that are not allowliste
 tests use a test-only extension, `dragshift-test@eteen12.github.io`
 (`tests/linux/ext/`). It owns `io.github.eteen12.DragShiftTest` on the session's private
 bus and offers `Version`, `Screenshot(path)`, `ScreenshotArea(x, y, w, h, path)`,
-`ListWindows`, `ActivateWindow(id)`, `MoveWindow(id, x, y, w, h)`, `GetPointer`,
+`ListWindows` (with each window's `window_type`, shell `app`, `in_tab_list` for Alt+Tab
+and `skip_taskbar`), `RunningApps` (`Shell.AppSystem.get_running()`, what the dock marks
+as running), `ActivateWindow(id)`, `MoveWindow(id, x, y, w, h)`, `GetPointer`,
 `GetWorkArea(x, y)` (monitor and Mutter's work area there) and the input methods below.
 
 - `Session(helper=True)` (CLI: `--helper`) copies it into the session's temporary
@@ -410,6 +412,47 @@ different command lines:
 
 ```sh
 uv run pytest tests/linux/test_caller_check.py -s   # refusals, the real app, latency
+```
+
+### Menu and toasts out of the dock and Alt+Tab (`Launch`)
+
+Mutter lists every window of an ordinary Wayland client as a running app (a dock icon
+with a dot, an Alt+Tab entry) and focuses it when it maps; a client can't change that.
+For a client the shell started itself (`Meta.WaylandClient`) the extension may make a
+window dock-type: no dock icon, no Alt+Tab entry, never focused (#95, measurements of the
+alternatives are on that issue). So, on Linux, `python -m dragshift`:
+
+1. hands its files to a running DragShift, as before (`handoff.try_handoff`);
+2. otherwise asks the extension's `Launch(quiet)` (`handoff.start_managed`,
+   `platform_linux.launch_app`). The extension starts `~/.local/bin/dragshift` (only that
+   path, a regular executable file of the user that nobody else can write, with fixed
+   arguments) as its own client, with `DRAGSHIFT_MANAGED=1`, and never two of them. This
+   process then hands its files to the new instance once it listens and exits;
+3. otherwise (no extension, no launcher, Launch refused, or no answer within 20 s) runs
+   the app itself, unmanaged, as before.
+
+The XDG autostart entry (#47), the app grid and the command line all go through this, so
+nothing starts twice. In the managed app, every window whose title has a `PlaceWindow`
+rule (the menu, `DragShift toast N`) becomes dock-type before it maps
+(`placement.js`); Settings and the tool windows stay normal windows.
+
+- Its windows report gnome-shell's pid, so the extension maps them to the started process
+  (`windowPid()` in `launcher.js`) for `PlaceWindow` and `CaptureAreaExcludingCaller`.
+- The same pid makes GNOME's "not responding" dialog dangerous: its default button, Force
+  Quit, SIGKILLs the pid the window reports, gnome-shell itself, which ends a Wayland
+  session (measured). So the extension SIGKILLs a managed DragShift as soon as that dialog
+  shows on one of its windows (the app hung for 5 s while being clicked).
+- It is not restarted after it exits, crashes or is killed; the next start asks `Launch`
+  again. It keeps running when the extension is disabled (e.g. while the screen is
+  locked) and is recognised again once it is re-enabled.
+- The launcher has to `exec` Python (as #50's template does), so the started pid is the
+  app's own: the caller check (#93) and the pid matching rely on it.
+- A source checkout without the launcher runs unmanaged: the menu and toasts show in the
+  dock and Alt+Tab while they are up.
+
+```sh
+uv run pytest tests/test_linux_managed.py                 # start_managed, offscreen
+uv run pytest -s -m gnome tests/linux/test_dock_hide.py   # the real app in the session
 ```
 
 ### Escape while the menu is open

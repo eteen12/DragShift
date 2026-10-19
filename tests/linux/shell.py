@@ -47,6 +47,7 @@ SIGNATURES = {
     "Screenshot": "(s)",
     "ScreenshotArea": "(iiiis)",
     "ListWindows": "",
+    "RunningApps": "",
     "ActivateWindow": "(t)",
     "MoveWindow": "(tiiii)",
     "GetPointer": "",
@@ -189,11 +190,17 @@ class ShellHelper:
         """Windows bottom to top. Keys: id, title, wm_class, pid, xid (0 unless X11),
         client ('x11'|'wayland'), frame (x, y, w, h), above, focused, minimized,
         stacking, window_type ('normal', 'desktop', ...), app (the shell's app id, e.g.
-        'org.gnome.Nautilus.desktop', or 'window:N' when no desktop file matches)."""
+        'org.gnome.Nautilus.desktop', or 'window:N' when no desktop file matches),
+        in_tab_list (Alt+Tab lists it), skip_taskbar."""
         windows = self.call("ListWindows")[0]
         for w in windows:
             w["frame"] = tuple(w["frame"])
         return windows
+
+    def running_apps(self) -> list[str]:
+        """Ids of the apps GNOME Shell counts as running (Shell.AppSystem.get_running(),
+        what the dock marks with a dot), e.g. 'org.gnome.Nautilus.desktop'."""
+        return self.call("RunningApps")[0]
 
     def wait_for_window(self, timeout: float = 15.0, **match) -> dict:
         """The topmost window whose fields equal every keyword (e.g. wm_class=...)."""
