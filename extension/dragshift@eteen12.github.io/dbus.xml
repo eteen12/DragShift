@@ -19,6 +19,15 @@
       <arg name="y" type="i" direction="out"/>
       <arg name="mask" type="u" direction="out"/>
     </method>
+    <!-- Escape (#24). WatchEscape(true) grabs Escape as a global accelerator for the
+         caller and returns whether the grab is held; EscapePressed is emitted on every
+         press while it is. WatchEscape(false) releases it (returns false). The grab ends
+         by itself when the caller's bus connection closes. -->
+    <method name="WatchEscape">
+      <arg name="on" type="b" direction="in"/>
+      <arg name="watching" type="b" direction="out"/>
+    </method>
+    <signal name="EscapePressed"/>
     <!-- CaptureArea (#26): the screen under a rect in stage (logical) pixels, without
          the drag icon (Mutter's feedback group for Wayland drags, DND-type windows for
          X11 ones) and without the cursor. The rect is clamped to the stage and the

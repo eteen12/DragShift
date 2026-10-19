@@ -127,6 +127,107 @@ def extension_available() -> bool:
     return _answered
 
 
+# ---------------------------------------------------------------- Escape (#24)
+# WatchEscape/EscapePressed need a connection that receives signals, so they get their
+# own (a jeepney DBusRouter with a receiver thread), opened by watch_escape(True) and
+# closed by watch_escape(False). _call's blocking request/reply connection is never used
+# for it. The extension ties the grab to this connection: closing it releases Escape.
+_esc = None          # (router, filter handle) while watching
+_esc_cb = None       # the callback EscapePressed calls
+_esc_lock = threading.Lock()
+
+
+class _OnSignal:
+    """Stands in for the queue of a jeepney filter: each matched signal calls the
+    current watch_escape() callback (on the router's receiver thread)."""
+
+    def put_nowait(self, _msg):
+        cb = _esc_cb
+        if cb is not None:
+            try:
+                cb()
+            except Exception:
+                import traceback
+                traceback.print_exc()
+
+
+def _esc_close() -> None:
+    global _esc
+    if _esc is None:
+        return
+    router, handle = _esc
+    _esc = None
+    try:
+        handle.close()
+        router.close()           # stops the receiver thread
+    except Exception:
+        pass
+    try:
+        router.conn.close()      # the extension sees the name vanish and drops the grab
+    except Exception:
+        pass
+
+
+def watch_escape(on: bool, callback=None) -> bool:
+    """Ask the shell extension to report Escape (True) or stop (False).
+
+    on=True grabs Escape for this process until watch_escape(False) or exit, and calls
+    `callback()` on every press, from a background thread (hand it to the GUI thread
+    yourself). Returns True while the grab is held; False when the extension is missing,
+    too old, or another program holds Escape. Never raises. Calling it again with True
+    only replaces the callback.
+
+    Escape is grabbed for the whole desktop while watching, so call it only while the
+    menu is open. During a file drag Mutter itself takes Escape to cancel the drag and
+    the grab never fires (#24): watch for the drag ending instead."""
+    global _esc, _esc_cb
+    with _esc_lock:
+        if not on:
+            _esc_cb = None
+            if _esc is not None:
+                try:
+                    _esc_call(_esc[0], False)
+                except Exception:
+                    pass
+            _esc_close()
+            return False
+        _esc_cb = callback
+        if _esc is not None:
+            return True
+        try:
+            from jeepney import MatchRule
+            from jeepney.bus_messages import message_bus
+            from jeepney.io.threading import DBusRouter, Proxy, open_dbus_connection
+        except ImportError:
+            return False
+        try:
+            router = DBusRouter(open_dbus_connection(bus="SESSION",
+                                                     auth_timeout=DBUS_TIMEOUT))
+        except Exception:
+            return False
+        rule = MatchRule(type="signal", interface=INTERFACE, member="EscapePressed",
+                         path=OBJECT_PATH)
+        handle = router.filter(rule, queue=_OnSignal())
+        _esc = (router, handle)
+        try:
+            Proxy(message_bus, router, timeout=DBUS_TIMEOUT).AddMatch(rule)
+            if _esc_call(router, True):
+                return True
+        except Exception:
+            pass
+        _esc_cb = None
+        _esc_close()
+        return False
+
+
+def _esc_call(router, on: bool) -> bool:
+    from jeepney import DBusAddress, MessageType, new_method_call
+    msg = new_method_call(DBusAddress(OBJECT_PATH, BUS_NAME, INTERFACE), "WatchEscape",
+                          "b", (on,))
+    reply = router.send_and_get_reply(msg, timeout=DBUS_TIMEOUT)
+    return reply.header.message_type == MessageType.method_return and reply.body == (True,)
+
+
 # ---------------------------------------------------------------- screen capture
 CAPTURE_TIMEOUT = 0.5   # seconds; a 400×400 capture takes 10-20 ms, a busy shell longer
 
