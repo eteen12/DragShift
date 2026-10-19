@@ -5,6 +5,7 @@ result card and clicks one of its buttons. Files, the Trash and the default-app 
 all the session's own; nothing here can reach the real desktop."""
 import json
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -114,6 +115,9 @@ def test_undo_moves_the_output_to_the_sessions_trash(gnome_session):
 def test_open_launches_the_default_app(gnome_session):
     s = gnome_session
     env = s.env()
+    missing = [t for t in ("xdg-open", "xdg-mime") if not shutil.which(t, path=env.get("PATH"))]
+    if missing:   # Open itself falls back to Qt then, which this test doesn't cover
+        pytest.skip("needs xdg-utils, missing: " + ", ".join(missing))
     marker = Path(env["HOME"]) / "opened.txt"
     script = Path(env["HOME"]) / "open-marker.sh"
     script.write_text(f'#!/bin/sh\nprintf "%s" "$1" > "{marker}"\n')

@@ -4,8 +4,10 @@ Most tests put a fake `soffice` on PATH. The `libreoffice` test runs the real on
 installed (on the dev machine: the snap) and is skipped otherwise."""
 import json
 import os
+import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -224,11 +226,34 @@ def test_workroot(lx, monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------- the real thing
-@pytest.mark.libreoffice
-def test_real_libreoffice(src, lx, capsys):
+@pytest.fixture
+def real_soffice(lx, monkeypatch):
+    """The installed LibreOffice, working in a folder of this test's own inside its work root.
+    Other runs (e.g. other worktrees) share the snap's ~/snap/libreoffice/common/DragShift at
+    the same time, so the tests only look at their own folder and their own processes."""
     cmd = lx.soffice_binary()
     if not cmd:
         pytest.skip("LibreOffice is not installed")
+    mine = lx.soffice_workroot(cmd) / f"test-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    monkeypatch.setattr(lx, "soffice_workroot", lambda c: mine)
+    yield cmd, mine
+    if mine.is_dir():
+        mine.rmdir()  # only when empty: a leftover is a failure the test reports
+
+
+def _running(folder: Path, name: str = "") -> list[str]:
+    """Command lines of processes working in `folder` (pytest itself excluded)."""
+    out = []
+    for p in Path("/proc").iterdir():
+        line = _cmdline(p) if p.name.isdigit() else ""
+        if str(folder) in line and name in line and "pytest" not in line:
+            out.append(line)
+    return out
+
+
+@pytest.mark.libreoffice
+def test_real_libreoffice(src, real_soffice, capsys):
+    cmd, mine = real_soffice
     t = time.monotonic()
     out = convert.convert(src, "docx", "PDF")[0]
     took = time.monotonic() - t
@@ -240,31 +265,41 @@ def test_real_libreoffice(src, lx, capsys):
         assert "cell 3" in doc[0].get_text()  # the table
         assert doc[0].get_images()  # the picture
         assert "LibreOffice" in (doc.metadata.get("producer") or "") + (doc.metadata.get("creator") or "")
-    assert workroot_entries(lx) == []
-    leftover = [p for p in Path("/proc").iterdir() if p.name.isdigit()
-                and _cmdline(p).count(str(lx.soffice_workroot(cmd))) and "pytest" not in _cmdline(p)]
-    assert leftover == [], [_cmdline(p) for p in leftover]
+    assert list(mine.iterdir()) == []  # profile, input copy and output dir removed
+    assert _running(mine) == []
     print(f"\nreal LibreOffice {' '.join(cmd)}: {took:.1f} s", file=sys.__stderr__)
 
 
 @pytest.mark.libreoffice
-def test_real_libreoffice_timeout_leaves_nothing_running(src, lx, monkeypatch, capsys):
-    cmd = lx.soffice_binary()
-    if not cmd:
-        pytest.skip("LibreOffice is not installed")
-    monkeypatch.setattr(convert, "SOFFICE_TIMEOUT", 2)  # well before a snap finishes
+def test_real_libreoffice_timeout_leaves_nothing_running(src, real_soffice, monkeypatch, capsys):
+    """The timeout fires once the real soffice.bin is converting, however fast this machine's
+    LibreOffice is, and the whole process group goes with it."""
+    cmd, mine = real_soffice
+    communicate = subprocess.Popen.communicate
+    seen = []
+
+    def timeout_once_converting(self, input=None, timeout=None):
+        if "--convert-to" not in self.args:
+            return communicate(self, input, timeout)
+        deadline = time.monotonic() + 60
+        while not seen and self.poll() is None and time.monotonic() < deadline:
+            seen.extend(_running(mine, "soffice.bin"))
+            time.sleep(0.02)
+        raise subprocess.TimeoutExpired(self.args, timeout)
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", timeout_once_converting)
+    monkeypatch.setattr(convert, "SOFFICE_TIMEOUT", 2)
     out = convert.convert(src, "docx", "PDF")[0]
+    assert seen, "soffice.bin never started for this conversion"
     assert "timed out after 2 s" in capsys.readouterr().out
     assert "Hello world from DragShift." in pdf_text(out)  # built-in renderer
-    root = str(lx.soffice_workroot(cmd))
     for _ in range(100):
-        leftover = [p for p in Path("/proc").iterdir() if p.name.isdigit()
-                    and root in _cmdline(p) and "pytest" not in _cmdline(p)]
+        leftover = _running(mine)
         if not leftover:
             break
         time.sleep(0.1)
-    assert leftover == [], [_cmdline(p) for p in leftover]
-    assert workroot_entries(lx) == []
+    assert leftover == [], leftover
+    assert list(mine.iterdir()) == []
 
 
 def _cmdline(p: Path) -> str:
