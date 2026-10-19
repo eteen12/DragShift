@@ -139,16 +139,17 @@ class GlassWindow(QWidget):
             self.liquid.moved()
         self._track_timer.start(TRACK_MS)
 
-    def hideEvent(self, e):
-        super().hideEvent(e)
-        if IS_LINUX:
-            self._track_timer.stop()
+    if IS_LINUX:    # only defined there: the Windows/macOS class is exactly as before
+        def hideEvent(self, e):
+            super().hideEvent(e)
+            if IS_LINUX:
+                self._track_timer.stop()
 
-    def changeEvent(self, e):
-        super().changeEvent(e)
-        if IS_LINUX and e.type() == QEvent.ActivationChange and self.isActiveWindow() \
-                and self._frame is not None:
-            self.liquid.moved()     # back to the window: what's behind may have changed
+        def changeEvent(self, e):
+            super().changeEvent(e)
+            if IS_LINUX and e.type() == QEvent.ActivationChange and self.isActiveWindow() \
+                    and self._frame is not None:
+                self.liquid.moved()     # back to the window: what's behind may have changed
 
     def showEvent(self, e):
         super().showEvent(e)

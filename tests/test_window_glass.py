@@ -2,9 +2,12 @@
 
 The Linux branches are switched on with the modules' IS_LINUX flags, and the extension
 calls (window_frame, pointer_state, work_area, place_window) and glass.grab_screen are
-fakes, so these run on every platform. The real thing runs in
-tests/linux/test_window_glass.py."""
+fakes. Those tests run on Linux only: on macOS the shared code takes its darwin branch
+first (platform_mac.window_number on an offscreen window crashes), so faking Linux there
+tests nothing real. The client, the D-Bus interface and the unchanged Windows/macOS path
+are tested everywhere. The real thing runs in tests/linux/test_window_glass.py."""
 import gc
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -16,6 +19,8 @@ from PySide6.QtTest import QTest
 from dragshift import glass, platform_linux, toasts, window
 
 EXT = Path(__file__).resolve().parent.parent / "extension" / "dragshift@eteen12.github.io"
+linux_only = pytest.mark.skipif(not sys.platform.startswith("linux"),
+                                reason="exercises the Linux branches of the shared code")
 
 
 @pytest.fixture
@@ -24,11 +29,20 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-def _settle(qapp):
-    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
-    gc.collect()
+def _renders_done(qapp):
+    """Let in-flight liquid renders finish and deliver, before any window goes (#85)."""
     QThreadPool.globalInstance().waitForDone()
     qapp.processEvents()
+
+
+def _close(qapp, *widgets):
+    _renders_done(qapp)
+    for w in widgets:
+        w.close()
+        w.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    gc.collect()
+    _renders_done(qapp)
 
 
 @pytest.fixture
@@ -64,14 +78,11 @@ def ext(qapp, monkeypatch):
     monkeypatch.setattr(glass, "exclude_from_capture", lambda wid: e.available)
     monkeypatch.setattr(glass, "grab_screen", grab_screen)
     yield e
-    for w in qapp.topLevelWidgets():
-        if isinstance(w, (window.GlassWindow, toasts.ToastCard)):
-            w.close()
-            w.deleteLater()
-    _settle(qapp)
+    _close(qapp, *[w for w in qapp.topLevelWidgets()
+                   if isinstance(w, (window.GlassWindow, toasts.ToastCard))])
 
 
-def _until(pred, ms=3000):
+def _until(pred, ms=10000):
     for _ in range(ms // 10):
         if pred():
             return True
@@ -108,6 +119,7 @@ def test_get_own_window_frame_interface():
 
 
 # ---------------------------------------------------------------- GlassWindow
+@linux_only
 def test_backdrop_comes_from_where_the_shell_put_the_window(ext, qapp, monkeypatch):
     from dragshift import app
     logged = []
@@ -133,6 +145,7 @@ def test_backdrop_comes_from_where_the_shell_put_the_window(ext, qapp, monkeypat
     assert ext.grabs[1:] == [(500, 200, 420, 320, 1)]
 
 
+@linux_only
 def test_resize_refreshes_at_the_new_size(ext, qapp):
     w = window.GlassWindow("Resize me", size=(420, 320))
     ext.frames[w.windowTitle()] = (300, 120, 420, 320)
@@ -144,16 +157,17 @@ def test_resize_refreshes_at_the_new_size(ext, qapp):
     assert ext.grabs[1] == (300, 120, 500, 360, 1)
 
 
+@linux_only
 def test_titles_are_unique_while_open(ext, qapp):
     a, b = window.GlassWindow("Crop Image"), window.GlassWindow("Crop Image")
     assert (a.windowTitle(), b.windowTitle()) == ("Crop Image — DragShift",
                                                   "Crop Image (2) — DragShift")
-    a.close()                                         # WA_DeleteOnClose
-    _settle(qapp)
+    _close(qapp, a)
     c = window.GlassWindow("Crop Image")
     assert c.windowTitle() == "Crop Image — DragShift"
 
 
+@linux_only
 def test_without_the_extension_painted_frost_and_no_polling(ext, qapp):
     ext.available = False
     w = window.GlassWindow("Settings", size=(420, 320))
@@ -167,6 +181,7 @@ def test_without_the_extension_painted_frost_and_no_polling(ext, qapp):
     w.grab()                                          # paints the frost without raising
 
 
+@linux_only
 def test_frame_poll_backs_off_while_unknown(ext, qapp):
     w = window.GlassWindow("Hidden", size=(300, 200))
     w.present()                                       # the fake never reports a frame
@@ -179,6 +194,9 @@ def test_frame_poll_backs_off_while_unknown(ext, qapp):
 def test_other_platforms_unchanged(qapp, monkeypatch):
     for mod in (glass, window):
         monkeypatch.setattr(mod, "IS_LINUX", False)
+    if sys.platform == "darwin":    # an offscreen window has no NSView to number
+        from dragshift import platform_mac
+        monkeypatch.setattr(platform_mac, "window_number", lambda w: 0)
     grabs = []
     monkeypatch.setattr(glass, "grab_screen",
                         lambda x, y, w, h, b=0: grabs.append((x, y, w, h, b)) or
@@ -193,11 +211,11 @@ def test_other_platforms_unchanged(qapp, monkeypatch):
     assert grabs == [(g.x(), g.y(), 420, 320, 0)]     # before show, at Qt's geometry
     w.liquid.refresh()
     assert grabs[-1][:4] == w.frameGeometry().getRect()
-    w.close()
-    _settle(qapp)
+    _close(qapp, w)
 
 
 # ---------------------------------------------------------------- toasts
+@linux_only
 def test_toast_refresh_after_a_slide_uses_the_placed_rect(ext, qapp):
     st = toasts.ToastStack()
     a, b = st.new(), st.new()
@@ -212,6 +230,7 @@ def test_toast_refresh_after_a_slide_uses_the_placed_rect(ext, qapp):
     b.dismiss()
 
 
+@linux_only
 def test_toast_without_the_extension_is_frost(ext, qapp):
     ext.available = False
     st = toasts.ToastStack()
