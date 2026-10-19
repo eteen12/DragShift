@@ -295,7 +295,8 @@ def test_menu_backdrop_fallback_order_and_log_line(qapp, lx, monkeypatch, capsys
         assert len(backdrop) == 1 and re.fullmatch(line, backdrop[0]), lines
         assert (menu.backdrop is None) == (not grab)
         assert (menu._raw_backdrop is None) == (not grab)
-        assert set(menu.liquid) == ({4, 7} if grab else set())   # the speculative renders
+        # the speculative renders: 4 starts, 7 would wait for it (#123)
+        assert set(menu.liquid) == ({4} if grab else set())
 
 
 @linux_only
@@ -324,6 +325,142 @@ def test_menu_logs_when_the_refracted_glass_is_on_screen(qapp, lx, monkeypatch, 
         m = re.fullmatch(r"menu: glass on screen (\d+\.\d) ms after popup, "
                          r"first frame (\d+\.\d) ms", lines[0])
         assert m and float(m[2]) <= float(m[1])
+
+
+class _Pool:
+    """QThreadPool.globalInstance() for the menu's renders: records the jobs, runs none."""
+    def __init__(self):
+        self.jobs = []
+
+    def globalInstance(self):
+        return self
+
+    def start(self, job):
+        self.jobs.append(job)
+
+    def started(self) -> list[int]:
+        return [j.n for j in self.jobs]
+
+
+@pytest.fixture
+def scheduling(qapp, lx, monkeypatch):
+    """A menu whose renders are recorded instead of run (see _Pool), over a fake capture."""
+    from dragshift import radial
+    from dragshift.radial import Item
+    monkeypatch.setattr(lx, "place_window", lambda *a: False)
+    monkeypatch.setattr(lx, "work_area", lambda x, y: None)
+    monkeypatch.setattr(lx, "capture", lambda x, y, w, h, *a, **k: Image.new("RGB", (w, h)))
+    monkeypatch.setattr(lx, "pointer_state", lambda: None)     # click mode's watch
+    monkeypatch.setattr(lx, "watch_escape", lambda *a: False)
+    pool = _Pool()
+    monkeypatch.setattr(radial, "QThreadPool", pool)
+    rings = {"Convert": [Item(f"c{i}") for i in range(9)], "Tools": [Item(f"t{i}") for i in range(8)]}
+    menu = radial.RadialMenu(lambda p: rings, lambda p: "1 file")
+    yield SimpleNamespace(menu=menu, pool=pool)
+    menu.hide()
+
+
+def _finish(menu, job, ok=True):
+    from PySide6.QtGui import QImage
+    from dragshift.util import release
+    release(job)
+    if ok:
+        img = QImage(radial_size(), radial_size(), QImage.Format_ARGB32_Premultiplied)
+        img.fill(0)
+        menu._rendered(job.serial, job.n, img, False)
+    else:
+        job.sig.failed.emit(job.serial)
+
+
+def radial_size():
+    from dragshift.radial import SIZE
+    return SIZE
+
+
+@linux_only
+def test_menu_renders_the_entered_files_ring_first(scheduling):
+    """#123, drag mode on GNOME: the speculative 4/7 renders run one after the other; once
+    the file enters, its first ring starts at once (beside the 4 already running), 7 is
+    dropped because it never started and the file has no 7-petal ring, and the second
+    ring (8) waits until nothing of this popup is rendering any more."""
+    from PySide6.QtCore import QPoint
+    m, pool = scheduling.menu, scheduling.pool
+    m.popup(QPoint(300, 300))
+    assert pool.started() == [4] and m._waiting == [7]
+    m._load(["/tmp/x.png"])                         # dragEnter
+    assert pool.started() == [4, 9] and m._waiting == [8]
+    assert 7 not in m.liquid
+    _finish(m, pool.jobs[0])                        # 4 done: 9 still running
+    assert pool.started() == [4, 9]
+    _finish(m, pool.jobs[1])                        # 9 done: the glass, then 8
+    assert pool.started() == [4, 9, 8] and m._waiting == []
+    _finish(m, pool.jobs[2])
+    assert {n for n, img in m.liquid.items() if not img.isNull()} == {4, 8, 9}
+
+
+@linux_only
+def test_menu_render_queue_click_mode_failure_and_stale(scheduling):
+    """Click mode starts the first ring and queues the second. A failed render lets the
+    next one start. A new popup drops what the old one still had waiting, and a late
+    result of the old popup neither shows nor starts anything."""
+    from PySide6.QtCore import QPoint
+    m, pool = scheduling.menu, scheduling.pool
+    m.popup(QPoint(300, 300), paths=["/tmp/x.png"])
+    assert pool.started() == [9] and m._waiting == [8]
+    _finish(m, pool.jobs[0], ok=False)
+    assert pool.started() == [9, 8]
+    m.hide()
+    m.popup(QPoint(300, 300))                       # drag mode again
+    assert pool.started() == [9, 8, 4] and m._waiting == [7]
+    _finish(m, pool.jobs[1])                        # the old popup's 8: stale
+    assert pool.started() == [9, 8, 4] and 8 not in m.liquid
+    _finish(m, pool.jobs[2])
+    assert pool.started() == [9, 8, 4, 7]
+    m.hide()
+    assert m._waiting == []
+
+
+@linux_only
+def test_menu_frost_is_painted_once_per_popup(qapp, lx, monkeypatch):
+    """#123: until the glass is in, each frame draws the frost from an image painted once
+    per popup and petal count, which looks like painting it afresh."""
+    import numpy as np
+    from PySide6.QtCore import QPoint, QThreadPool
+    from PySide6.QtGui import QImage
+    from dragshift import radial
+    from dragshift.radial import Item
+    monkeypatch.setattr(lx, "place_window", lambda *a: False)
+    monkeypatch.setattr(lx, "work_area", lambda x, y: None)
+    monkeypatch.setattr(lx, "capture", lambda x, y, w, h, *a, **k: Image.radial_gradient("L")
+                        .resize((w, h)).convert("RGB"))
+    monkeypatch.setattr(radial.RadialMenu, "_render", lambda self, n: None)   # frost only
+    rings = {"Convert": [Item(f"c{i}") for i in range(9)]}
+    menu = radial.RadialMenu(lambda p: rings, lambda p: "1 file")
+    painted = []
+    real = menu._paint_fallback
+    monkeypatch.setattr(menu, "_paint_fallback", lambda *a: painted.append(a[2]) or real(*a))
+    menu.popup(QPoint(300, 300))
+    menu._load(["/tmp/x.png"])                      # the file entered
+    menu.anim.stop()
+    menu._t = menu._swap = 1.0
+
+    def shot():
+        im = menu.grab().toImage().convertToFormat(QImage.Format_RGBA8888)
+        return np.frombuffer(im.constBits(), np.uint8).reshape(im.height(), im.width(), 4).copy()
+
+    cached = [shot() for _ in range(3)]
+    assert painted == [9] and list(menu._frost) == [(9, menu.devicePixelRatioF())]
+    monkeypatch.setattr(radial, "IS_LINUX", False)  # Windows/macOS: painted each frame
+    direct = shot().astype(np.int16)
+    assert painted == [9, 9]
+    diff = np.abs(cached[0].astype(np.int16) - direct)
+    print(f"frost image vs painted: mean {diff.mean():.3f}, max {diff.max()}")
+    assert diff.mean() < 1.0
+    monkeypatch.setattr(radial, "IS_LINUX", True)
+    menu.popup(QPoint(320, 300))
+    assert menu._frost == {}                        # a new backdrop, a new frost
+    menu.hide()
+    QThreadPool.globalInstance().waitForDone(10000)
 
 
 @pytest.fixture

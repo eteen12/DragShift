@@ -48,6 +48,9 @@ BUDGET_MS = 40                    # SPEC 4.6: capture -> PNG -> D-Bus -> PIL, pe
 # The capture's median at 200 %: the shell paints and PNG-encodes 800x800 device pixels,
 # measured 50-67 ms (#39); a regression guard until the extension encodes at logical size.
 HIDPI_CAPTURE_MS = 100
+# #123: Shift -> refracted glass on screen, median, with the file entered at once (GNOME).
+# Before #123: 268 ms at 100 %, 407 ms at 200 %.
+GLASS_MS = {1: 120, 2: 200}
 RED = (220, 30, 30)
 
 
@@ -288,7 +291,8 @@ def test_real_app_latency_from_shift_to_glass(env, pictures):  # noqa: F811
     """Shift+drags with the real app, from Files and from the desktop: the time from the
     Shift press to the first frame and to the refracted glass on screen, read from the
     app's own log lines. The capture stays within the spec's 40 ms at 100 % (not at
-    200 %, see HIDPI_CAPTURE_MS); the numbers are recorded on #39."""
+    200 %, see HIDPI_CAPTURE_MS); the numbers are recorded on #39. The refracted glass
+    of the file's own ring is up within GLASS_MS of the Shift press (#123)."""
     files, folder, _ = pictures
     desk = files.put_on_desktop({f"Desk {time.monotonic_ns()}.png": _colourful(3)})[0]
     app = App(env, "--quiet")
@@ -340,6 +344,7 @@ def test_real_app_latency_from_shift_to_glass(env, pictures):  # noqa: F811
     assert all(r["source"] == "capture" for r in rows)
     assert all(r["first_frame_ms"] < r["glass_ms"] for r in rows)   # frost first, then glass
     assert summary["capture_ms"]["median"] < (BUDGET_MS if env.scale == 1 else HIDPI_CAPTURE_MS)
+    assert summary["shift_to_glass_ms"]["median"] < GLASS_MS[env.scale], summary
 
 
 # ------------------------------------------------------------------ no extension
