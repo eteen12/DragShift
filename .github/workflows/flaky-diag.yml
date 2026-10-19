@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest]
-        exp: [collectable, all, wording, logging, linux, core]
+        exp: [waitcrash, natural]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -22,37 +22,35 @@ jobs:
       - run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest
-      - name: Experiment ${{ matrix.exp }}, suite in a loop, no capture
+      - name: Find cdb
+        shell: bash
+        run: |
+          ls "/c/Program Files (x86)/Windows Kits/10/Debuggers/x64/cdb.exe" || find /c/Program\ Files* -iname cdb.exe 2>/dev/null | head
+      - name: Experiment ${{ matrix.exp }} under cdb
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
-          PYTHONFAULTHANDLER: "1"
           PYTHONPATH: .github/diag
           EXP: ${{ matrix.exp }}
         run: |
-          args=""
-          T=tests/test_result_actions.py
+          CDB="/c/Program Files (x86)/Windows Kits/10/Debuggers/x64/cdb.exe"
           case "$EXP" in
-            collectable) python .github/diag/edit.py collectable ;;
-            all) python .github/diag/edit.py gc_genuine_noworker ;;
-            wording) python .github/diag/edit.py gc_genuine_noworker; args="tests/test_linux_wording.py $T" ;;
-            logging) python .github/diag/edit.py gc_genuine_noworker; args="tests/test_logging.py $T" ;;
-            linux) python .github/diag/edit.py gc_genuine_noworker; args="tests/test_linux.py $T" ;;
-            core) python .github/diag/edit.py gc_genuine_noworker; args="tests/test_core.py tests/test_formats.py tests/test_linux_autostart.py $T" ;;
+            waitcrash) python .github/diag/edit.py gc_genuine_noworker ;;
+            natural) ;;
           esac
+          PY=$(python -c "import sys; print(sys.executable)")
           fails=0
-          for i in $(seq 1 6); do
-            if python -m pytest -q -s -p no:cacheprovider -p diagplug $args > out.txt 2>&1; then
-              echo "run $i: ok ($(tail -1 out.txt))"
+          for i in $(seq 1 8); do
+            printf '.lines -d\n.echo ==== STACKS\n~*kn 60\n.echo ==== EXC\n.exr -1\n.ecxr\nkn 60\nq\n' | \
+              "$CDB" -g -G -o "$PY" -X faulthandler=0 -m pytest -q -s -p no:faulthandler -p no:cacheprovider -p diagplug > out.txt 2>&1 || true
+            if grep -q ' passed' out.txt && ! grep -q '==== STACKS' out.txt; then
+              echo "run $i: ok ($(grep ' passed' out.txt | tail -1))"
             else
               fails=$((fails+1))
               echo "::group::run $i FAILED"
-              grep -v -E '^\s*File ".*(_pytest|pluggy)|gc: collectable' out.txt | tail -40
-              grep -o 'gc: collectable <[A-Za-z0-9_.]*' out.txt | sort | uniq -c | sort -rn | head -80 || true
+              grep -v -E '^ModLoad|^This plugin' out.txt | tail -250
               echo "::endgroup::"
-            fi
-            if [ "$EXP" = collectable ] && [ $i = 1 ]; then
-              grep -o 'gc: collectable <[A-Za-z0-9_.]*' out.txt | sort | uniq -c | sort -rn | head -80 || true
+              [ $fails -ge 2 ] && break
             fi
           done
           echo "failed runs: $fails"
