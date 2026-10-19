@@ -92,6 +92,8 @@ python -m dragshift
 
 Tests: `python -m pytest -q`. Logs are written to `%LOCALAPPDATA%\DragShift\log.txt` on Windows and `~/Library/Logs/DragShift/log.txt` on Mac.
 
+On Linux, see [docs/LINUX-DEV.md](docs/LINUX-DEV.md) for setup and [docs/LINUX-TESTING.md](docs/LINUX-TESTING.md) for the tests, the isolated GNOME session and the end-to-end runner.
+
 
 Windows builds will be code-signed by the SignPath Foundation, which provides free code signing for open-source projects.
 
