@@ -4,9 +4,9 @@ test_window_glass.py (Linux, isolated session only).
 The extension knows the caller by its bus connection, so the windows, their captures and
 the GetOwnWindowFrame polls must come from one process, like in the app. This program
 runs the app's own classes (tools.CropWindow + present(), toasts.ToastStack with a real
-conversion) with the app's logging, and records every capture a LiquidBacking makes
-(rect, source, time and the PIL image glass.grab_screen returned), so a test can compare
-a backdrop with what is really behind the window.
+conversion) with the app's logging, and records every backdrop a LiquidBacking renders
+(rect, source, capture time and the PIL image captured), so a test can compare a
+backdrop with what is really behind the window.
 
 Start it with `GlassApp(session, shell)` (cwd = repo, `python -m tests.linux.glass_app`).
 Commands are JSON lines on stdin, one JSON reply line each on stdout:
@@ -21,7 +21,9 @@ Commands are JSON lines on stdin, one JSON reply line each on stdout:
   "working", converts `src` to JPG for real (convert.convert) and turns into the done
   card; with keep, it stays until dismissed.
 - {"cmd": "dismiss", "title"}, {"cmd": "close", "title"}
-- {"cmd": "bench", "title", "n"} -> per-step times of n refreshes and n frame polls.
+- {"cmd": "bench", "title", "n"} -> per-step times of n refreshes and n frame polls,
+  how long the GUI thread was blocked during each refresh (a heartbeat timer), and the
+  longest GetPointer call meanwhile (polled every 15 ms, like the trigger).
 The first line is {"type": "ready", "pid", "platform"}.
 """
 from __future__ import annotations
@@ -35,6 +37,7 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+HEARTBEAT_MS = 5        # bench: the GUI-thread heartbeat
 
 
 # ---------------------------------------------------------------- test side
@@ -135,32 +138,34 @@ def main() -> int:
 
     widgets: dict[str, object] = {}
     records: dict[str, list[dict]] = {}
-    capturing = []
+    last_ms = [0.0]                       # how long the last capture took
     stack = toasts.ToastStack()
 
-    real_grab, real_capture_at = glass.grab_screen, glass.LiquidBacking.capture_at
+    real_grab = glass.grab_screen
+    real_captured, real_render = glass.LiquidBacking._captured, glass.LiquidBacking._render
 
-    def grab_screen(x, y, w, h, below_window=0):
+    def grab_screen(x, y, w, h, below_window=0):     # on the GUI thread (a toast's first)
         t = time.perf_counter()
         im = real_grab(x, y, w, h, below_window)
-        rec = {"rect": [x, y, w, h], "below": below_window, "source": glass.LAST_SOURCE,
-               "ms": (time.perf_counter() - t) * 1000, "image": im}
-        if capturing:
-            lst = records.setdefault(capturing[-1].windowTitle(), [])
-            lst.append(rec)
-            for old in lst[:-2]:
-                old["image"] = None       # keep the last two images only
+        last_ms[0] = (time.perf_counter() - t) * 1000
         return im
 
-    def capture_at(self, rect):
-        capturing.append(self.w)
-        try:
-            return real_capture_at(self, rect)
-        finally:
-            capturing.pop()
+    def captured(self, serial, pil, ms):              # a refresh's, from the pool thread
+        last_ms[0] = ms
+        return real_captured(self, serial, pil, ms)
+
+    def render(self, pil, rect):                      # every backdrop goes through here
+        lst = records.setdefault(self.w.windowTitle(), [])
+        lst.append({"rect": [rect.x(), rect.y(), rect.width(), rect.height()],
+                    "below": int(self.w.isVisible()), "source": glass.LAST_SOURCE,
+                    "ms": last_ms[0], "image": pil})
+        for old in lst[:-2]:
+            old["image"] = None           # keep the last two images only
+        return real_render(self, pil, rect)
 
     glass.grab_screen = grab_screen
-    glass.LiquidBacking.capture_at = capture_at
+    glass.LiquidBacking._captured = captured
+    glass.LiquidBacking._render = render
 
     def reply(**kw):
         out.write(json.dumps(kw) + "\n")
@@ -191,7 +196,8 @@ def main() -> int:
 
     def bench(title, n):
         w = widgets[title]
-        res = {"poll": [], "gc": [], "capture": [], "render": [], "total": []}
+        res = {"poll": [], "gc": [], "capture": [], "render": [], "total": [], "call": [],
+               "block": [], "blocked": [], "pointer": []}
         for _ in range(n):
             t = time.perf_counter()
             platform_linux.window_frame(w.windowTitle())
@@ -201,19 +207,47 @@ def main() -> int:
         def changed():
             done.append(time.perf_counter())
 
+        # GUI-thread heartbeat: a HEARTBEAT_MS timer stamps the time; the longest gap
+        # between stamps (and between the refresh call and the first stamp) while a
+        # refresh is under way is the longest the GUI thread could not run.
+        # The trigger's GetPointer poll runs as in the app (every 15 ms on the GUI thread);
+        # its longest call during a refresh shows whether it waited for the capture.
+        beats, polls = [], []
+        heart = QTimer(interval=HEARTBEAT_MS, timeout=lambda: beats.append(time.perf_counter()))
+        heart.setTimerType(Qt.PreciseTimer)
+
+        def poll():
+            t = time.perf_counter()
+            platform_linux.pointer_state()
+            polls.append((t, (time.perf_counter() - t) * 1000))
+
+        trigger = QTimer(interval=15, timeout=poll)
         w.liquid.changed.connect(changed)
+        heart.start()
+        trigger.start()
         for _ in range(n):
             done.clear()
+            spin(20)                      # the heartbeat runs
+            beats.clear()
+            polls.clear()
             t0 = time.perf_counter()
             w.liquid.refresh()            # what a settled move or resize runs
+            res["call"].append((time.perf_counter() - t0) * 1000)
             deadline = time.monotonic() + 5
             while not done and time.monotonic() < deadline:
                 qapp.processEvents(QEventLoop.AllEvents, 10)
             if not done:
                 break
+            stamps = [t0] + [b for b in beats if t0 < b < done[0]] + [done[0]]
+            gaps = [(b - a) * 1000 for a, b in zip(stamps, stamps[1:])]
+            res["block"].append(max(gaps))
+            res["blocked"].append(sum(max(0.0, g - HEARTBEAT_MS) for g in gaps))
             res["total"].append((done[0] - t0) * 1000)
+            res["pointer"].append(max([ms for t, ms in polls if t0 <= t <= done[0]] or [0.0]))
             res["capture"].append(records[title][-1]["ms"])
             spin(30)
+        heart.stop()
+        trigger.stop()
         w.liquid.changed.disconnect(changed)
         # the render on its own (pool thread), from the last capture
         from dragshift import liquid
