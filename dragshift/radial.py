@@ -87,13 +87,6 @@ class _RenderJob(QRunnable):
             traceback.print_exc()
 
 
-def _linux_backdrop(x: int, y: int):
-    """Linux: what's under the menu rect from platform_linux (screen, else wallpaper), or None."""
-    from . import platform_linux
-    im = platform_linux.capture(x, y, SIZE, SIZE)
-    return im if im is not None else platform_linux.wallpaper_crop(x, y, SIZE, SIZE)
-
-
 class RadialMenu(QWidget):
     activated = Signal(object, list)     # Item, paths
     dismissed = Signal()
@@ -165,10 +158,14 @@ class RadialMenu(QWidget):
                     cx, cy = pos.x() - tl.x(), pos.y() - tl.y()
                     raw = glass.inpaint_rects(raw, [(cx - 70, cy - 64, cx + 70, cy + 64)])
                 shot = QPixmap.fromImage(glass.qimage_from_pil(raw))
-            elif IS_LINUX and (raw := _linux_backdrop(tl.x(), tl.y())) is not None:
-                # Linux: the shell extension's capture, else the wallpaper under the menu;
-                # with neither, Qt's grab below as before
-                if self.got_drag or paths is None:
+            elif IS_LINUX:
+                # the shell extension's capture, else the wallpaper, else Qt's grab
+                raw = glass.grab_screen(tl.x(), tl.y(), SIZE, SIZE)
+                if raw is None:
+                    raise RuntimeError("capture failed")
+                if glass.LAST_SOURCE == "capture" and paths is None:
+                    # belt and braces as on macOS: erase a drag picture a screen capture
+                    # might still hold (a wallpaper crop never does)
                     cx, cy = pos.x() - tl.x(), pos.y() - tl.y()
                     raw = glass.inpaint_rects(raw, [(cx - 70, cy - 64, cx + 70, cy + 64)])
                 shot = QPixmap.fromImage(glass.qimage_from_pil(raw))

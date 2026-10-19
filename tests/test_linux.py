@@ -144,47 +144,69 @@ def test_exclude_from_capture(lx, monkeypatch):
 
 
 @linux_only
-def test_grab_screen_uses_capture(qapp, lx, monkeypatch):
+def test_grab_screen_capture_is_normalised(qapp, lx, monkeypatch):
     from dragshift import glass
     calls = []
-    img = Image.new("RGB", (30, 20), (1, 2, 3))
-    monkeypatch.setattr(lx, "capture", lambda *a, **k: calls.append((a, k)) or img)
-    assert glass.grab_screen(5, 6, 30, 20) is img
-    assert glass.grab_screen(5, 6, 30, 20, below_window=1) is img
-    assert calls == [((5, 6, 30, 20), {"exclude_self": False}), ((5, 6, 30, 20), {"exclude_self": True})]
+    big = Image.new("RGB", (60, 40), (1, 2, 3))      # e.g. a capture at 2x device scale
+    monkeypatch.setattr(lx, "capture", lambda *a, **k: calls.append(k["exclude_self"]) or big)
+    im = glass.grab_screen(5, 6, 30, 20)
+    assert im.size == (30, 20) and glass.LAST_SOURCE == "capture"
+    glass.grab_screen(5, 6, 30, 20, below_window=1)
+    assert calls == [False, True]      # non-zero below_window = leave our own windows out
 
 
 @linux_only
-def test_grab_screen_falls_back_to_qt(qapp, lx, monkeypatch):
+def test_grab_screen_falls_back_to_wallpaper(qapp, lx, monkeypatch):
     from dragshift import glass
-    calls = []
-    monkeypatch.setattr(lx, "capture", lambda *a, **k: calls.append(a))
-    im = glass.grab_screen(0, 0, 40, 30)
-    assert calls == [(0, 0, 40, 30)]
-    assert im is None or im.size == (40, 30)
+    wall = Image.new("RGB", (30, 20), (9, 9, 9))
+    monkeypatch.setattr(lx, "wallpaper_crop", lambda *a: wall)
+    for below in (0, 1):
+        assert glass.grab_screen(5, 6, 30, 20, below_window=below) is wall
+        assert glass.LAST_SOURCE == "wallpaper"
+
+
+@linux_only
+def test_grab_screen_qt_only_when_self_needs_no_excluding(qapp, lx):
+    from dragshift import glass
+    im = glass.grab_screen(0, 0, 40, 30)              # fallbacks: no capture, no wallpaper
+    assert im is not None and im.size == (40, 30) and glass.LAST_SOURCE == ""
+    assert glass.grab_screen(0, 0, 40, 30, below_window=1) is None
 
 
 # ---------------------------------------------------------------- radial menu
-@linux_only
-def test_menu_backdrop_from_wallpaper(qapp, lx, monkeypatch):
+def _popup(radial, at):
     from PySide6.QtCore import QPoint, QThreadPool
-    from dragshift import radial
-    calls = []
-    monkeypatch.setattr(lx, "capture", lambda *a, **k: calls.append(("capture", a)))
-    wall = Image.new("RGB", (radial.SIZE, radial.SIZE), (10, 120, 200))
-    monkeypatch.setattr(lx, "wallpaper_crop", lambda *a: calls.append(("wallpaper", a)) or wall)
     menu = radial.RadialMenu(lambda p: {}, lambda p: "")
-    try:
-        menu.popup(QPoint(300, 300))
-        tl = menu.pos()
-        assert calls == [("capture", (tl.x(), tl.y(), radial.SIZE, radial.SIZE)),
-                         ("wallpaper", (tl.x(), tl.y(), radial.SIZE, radial.SIZE))]
-        assert menu._raw_backdrop is not None
-        assert menu._raw_backdrop.getpixel((2, 2))[:3] == (10, 120, 200)
-        assert menu.backdrop is not None
-    finally:
-        QThreadPool.globalInstance().waitForDone(10000)
-        menu.hide()
+    menu.popup(QPoint(*at))
+    QThreadPool.globalInstance().waitForDone(10000)
+    menu.hide()
+    return menu, (at[0] - menu.pos().x(), at[1] - menu.pos().y())
+
+
+@linux_only
+def test_menu_wallpaper_backdrop_is_not_inpainted(qapp, lx, monkeypatch):
+    from dragshift import radial
+    wall = Image.new("RGB", (radial.SIZE, radial.SIZE), (10, 120, 200))
+    monkeypatch.setattr(lx, "wallpaper_crop", lambda *a: wall)
+    menu, cur = _popup(radial, (300, 300))
+    assert menu._raw_backdrop.getpixel(cur)[:3] == (10, 120, 200)
+    assert menu.backdrop is not None
+
+
+@linux_only
+def test_menu_capture_is_inpainted_under_the_cursor(qapp, lx, monkeypatch):
+    from PIL import ImageDraw
+    from dragshift import radial
+
+    def capture(x, y, w, h, exclude_self=False):   # blue screen with a red "drag icon" on the cursor
+        im = Image.new("RGB", (w, h), (10, 120, 200))
+        ImageDraw.Draw(im).rectangle((300 - x - 20, 300 - y - 20, 300 - x + 20, 300 - y + 20), fill=(255, 0, 0))
+        return im
+
+    monkeypatch.setattr(lx, "capture", capture)
+    menu, cur = _popup(radial, (300, 300))
+    r, g, b = menu._raw_backdrop.getpixel(cur)[:3]
+    assert r < 128 and b > 128, (r, g, b)
 
 
 # ---------------------------------------------------------------- toasts / settings

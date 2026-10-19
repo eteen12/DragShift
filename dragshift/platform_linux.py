@@ -34,8 +34,9 @@ def extension_available() -> bool:
 
 # ---------------------------------------------------------------- screen capture
 def capture(x: int, y: int, w: int, h: int, exclude_self: bool = False):
-    """Screen rect (logical px) as a PIL RGB image of size w×h, or None.
-    exclude_self: leave DragShift's own windows (and the drag icon) out of the picture."""
+    """Screen rect (logical px) as a PIL RGB image, or None. The drag picture (Mutter's
+    drag actor) is ALWAYS left out. exclude_self additionally leaves DragShift's own
+    windows out, for live refresh behind toasts and tool windows."""
     return None
 
 

@@ -278,10 +278,16 @@ class _LiquidJob(QRunnable):
             traceback.print_exc()
 
 
+LAST_SOURCE = ""  # Linux: what the last grab_screen() used: "capture", "wallpaper" or ""
+
+
 def grab_screen(x: int, y: int, w: int, h: int, below_window: int = 0):
     """Screen pixels under a rect (logical coords) as a PIL image of size w×h.
     macOS: native capture that leaves out the drag picture (and `below_window` and above).
-    Linux: the shell extension's capture when available, else Qt's grab as before."""
+    Linux: the shell extension's capture (never contains the drag picture; any non-zero
+    `below_window` also leaves our own windows out), else the wallpaper under the rect.
+    Qt's grab is the last resort only when our own window doesn't need leaving out."""
+    global LAST_SOURCE
     if sys.platform == "darwin":
         from . import platform_mac
         if platform_mac.OK:
@@ -290,9 +296,16 @@ def grab_screen(x: int, y: int, w: int, h: int, below_window: int = 0):
                 return im
     elif IS_LINUX:
         from . import platform_linux
+        LAST_SOURCE = "capture"
         im = platform_linux.capture(x, y, w, h, exclude_self=bool(below_window))
+        if im is None:
+            LAST_SOURCE = "wallpaper"
+            im = platform_linux.wallpaper_crop(x, y, w, h)
         if im is not None:
-            return im
+            return im if im.size == (w, h) else im.resize((w, h))   # e.g. a 2× capture
+        LAST_SOURCE = ""
+        if below_window:
+            return None   # a Qt grab would bake our own window into its backdrop
     from PySide6.QtCore import QPoint
     from PySide6.QtGui import QGuiApplication
     scr = QGuiApplication.screenAt(QPoint(x + w // 2, y + h // 2)) or QGuiApplication.primaryScreen()
