@@ -2,6 +2,8 @@
 
 Offscreen only. Autostart and the settings store are faked, so nothing here writes an autostart
 entry, the registry, a LaunchAgent or QSettings."""
+import sys
+
 import pytest
 from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QPushButton
 
@@ -83,9 +85,8 @@ def test_linux_has_no_macos_only_controls(qapp, calls, linux):
     sw.close(), ww.close()
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="TRIGGERS is built at import from the real platform")
 def test_linux_trigger_labels(qapp, calls, linux):
-    if not settings.IS_LINUX:          # TRIGGERS is built at import from the real platform
-        pytest.skip("TRIGGERS follows the real sys.platform")
     sw = settings.SettingsWindow(FakeSettings())
     assert [sw.trigger.itemText(i) for i in range(sw.trigger.count())] == ["Shift", "Ctrl", "Alt"]
     ww = settings.WelcomeWindow(FakeSettings(), dict(settings.TRIGGERS)["shift"])
