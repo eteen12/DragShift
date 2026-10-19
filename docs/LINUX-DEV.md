@@ -359,6 +359,50 @@ or `python -m dragshift` from a checkout named by `DRAGSHIFT_SRC`.
     pointer.
   - Neither touches your own `~/.local/share/nautilus/scripts`.
 
+## Installing: install-linux.sh
+
+`install-linux.sh` at the repo root installs DragShift for the current user, without sudo
+(#66). Run from a checkout, it installs that checkout. Piped from curl, it downloads the
+fork, with `git clone --depth 1`, or the tarball without git. Re-running it updates.
+
+- **Layout.** `${XDG_DATA_HOME:-~/.local/share}/dragshift/{src,venv}` (uv when present,
+  else `python3 -m venv` + pip), the launcher `~/.local/bin/dragshift` with `DATA=` set to
+  that absolute folder (a regular 0755 file; its last line stays #93's form),
+  `applications/io.github.eteen12.DragShift.desktop` with the absolute launcher in `Exec=`
+  (`~/.local/bin` is on PATH only after a login that found it) plus
+  `update-desktop-database`, the 256 px icon, `nautilus/scripts/DragShift…` (also in
+  `~/.local/share/nautilus/scripts` when `XDG_DATA_HOME` is elsewhere, for DING), the
+  extension through `extension/build.sh` + `gnome-extensions install --force`, and
+  autostart through the installed app's own `platform_linux.set_autostart`.
+- **Extension on.** `gnome-extensions enable` fails for an extension that the running shell
+  hasn't loaded (GNOME 46 loads new ones only at login), so the installer adds the UUID to
+  `org.gnome.shell enabled-extensions` itself and asks you to log out and back in.
+- **Autostart.** A first install turns it on, and an update keeps your Settings choice.
+  `--autostart` and `--no-autostart` decide explicitly. With the launcher installed, the
+  Welcome window's box starts from the entry, so "Got it" doesn't undo `--no-autostart`.
+- **Updates.** A running DragShift of this install is stopped and started again. The venv is
+  kept unless its Python is gone or another version. Unchanged files are not rewritten.
+- **System packages.** The installer checks them with `dpkg-query`: python3-venv (without
+  uv), the Qt libraries for offscreen and native Wayland, and desktop-file-utils. If any is
+  missing, it prints the `sudo apt install …` line and exits 1. `libxcb-cursor0` is not
+  needed.
+- **Options.** `--no-start`, `--from-dir <checkout>`, `--uninstall` (a stub until #67).
+- **Download overrides.** `DRAGSHIFT_REPO`, `DRAGSHIFT_REF` and `DRAGSHIFT_TARBALL` change
+  where the download comes from. The tests use `file://` URLs.
+
+```sh
+uv run pytest tests/test_install_script.py               # options, apt line, quoting; no session
+uv run pytest -s tests/linux/test_install.py             # installs in sessions, then logs in again
+```
+
+`tests/linux/test_install.py` installs into a session's temporary HOME, then boots a second
+session on the same root (`Session(root=new_root())`: same HOME, XDG dirs and dconf, like
+logging out and back in). In that second session it checks that the extension is
+ACTIVE, that the autostart entry starts the app (launched through GDesktopAppInfo as
+gnome-session does), and that a Shift+drag converts a file. It also starts the app from
+the app grid and covers Open With and the Scripts menu. Set `DRAGSHIFT_TEST_CACHE=<dir>`
+to keep the uv/pip downloads between runs.
+
 ## DOCX → PDF and LibreOffice
 
 On Linux, DOCX → PDF uses LibreOffice when it is installed (`soffice` or `libreoffice` on
@@ -637,4 +681,63 @@ screen behind the window; its bench measures the GUI thread with a 5 ms heartbea
 
 ```sh
 uv run pytest tests/test_window_glass.py tests/linux/test_window_glass.py -s   # scale 1 and 2; prints timings
+```
+
+## End-to-end runner
+
+`demo/e2e_linux.py` is the Linux twin of `demo/e2e_windows.py` (#57). It boots its own
+isolated session (the launcher above, with DragShift's extension built by
+`extension/build.sh` and the test helper), starts the app from this Python, makes the sample
+files in the session HOME (`~/DragShiftTest`, and `~/Desktop/D-*` when a desktop scenario
+runs) and opens them in Files. Each scenario is a real Shift+drag injected into that session:
+press on the icon, move 72 px, Shift, into the menu, a Shift tap for the Tools ring, onto
+the petal, release. Then it checks the app logged the drop on that petal, verifies the
+output with the shared verifiers and checks that the dragged files kept their bytes and
+mtime. Nothing goes into your HOME.
+
+```sh
+uv run python demo/e2e_linux.py                       # every scenario
+uv run python demo/e2e_linux.py --only "JPG → PNG"    # one (repeat --only for more)
+uv run python demo/e2e_linux.py --list
+uv run python demo/e2e_linux.py --record --out /tmp/e2e   # + e2e_linux.mp4 (.webp without ffmpeg)
+uv run pytest tests/linux/test_e2e_smoke.py           # the runner with --only "JPG → PNG"
+```
+
+- Output (`e2e_linux_out/` or `--out`): `results.json` (`{name, where, status, detail,
+  seconds, t}`), `results.md` (the Windows table), `log.txt`, `app_log.txt` (the app's own
+  output, where the `menu:` and `trigger:` lines go, then its `log.txt`), `shots/`
+  (`NN_<name>_menu.png` over the petal, `NN_FAIL_<name>.png`). The exit code is 1 when a
+  scenario is not PASS or none ran.
+- A failed scenario takes a screenshot, presses Escape, releases every key and button,
+  puts back any sample file that went missing, and the run continues.
+- `--record` takes a screenshot every 0.5 s, with a dot for the pointer (the helper's
+  screenshots leave the cursor out). GNOME's own screencast isn't available in the
+  isolated session.
+- Scenarios come from `SCENARIOS` at the end of `e2e_linux.py` (`JPG → PNG`), then from the
+  `SCENARIOS` list of every `demo/e2e_linux_*.py` module, sorted by file name and imported
+  only when the runner starts. Add a new module for a new group of scenarios, so parallel
+  branches don't edit the same list:
+
+  ```python
+  # demo/e2e_linux_conversions.py
+  from e2e_common import v_format
+  from e2e_linux import Scenario
+
+  SCENARIOS = [
+      Scenario("JPG → WEBP", "nautilus", ["Photo.jpg"], "Convert", "WEBP", v_format("WEBP", ".webp")),
+  ]
+  ```
+
+  A `Scenario` takes the arguments of `e2e_windows.run()`, with `where="nautilus"` or
+  `"desktop"`. `tool` drives a tool window after the drop, and `C`, `inject` and the other
+  helpers of `e2e_linux` can be imported from it. A module that fails to import, has no
+  `SCENARIOS` list or repeats a scenario name stops the run with exit code 1. `--list`
+  prints the scenarios grouped by file.
+- The sample files, `new_files` and the `v_*` verifiers live in `demo/e2e_common.py`, which
+  the Windows and macOS runners import too.
+- In the Docker image the repo is read-only, so pass `--out` on a writable mount:
+
+```sh
+docker run --rm --init --shm-size=512m --user "$(id -u):$(id -g)" -v "$PWD:/src:ro" \
+  -v /tmp/e2e:/out -w /src dragshift-gnome-test:local python demo/e2e_linux.py --out /out
 ```
