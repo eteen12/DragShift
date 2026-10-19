@@ -15,6 +15,8 @@ touched:
 - Ubuntu's desktop-icons extension (DING) kills every `gjs <its path>/app/ding.js` of the
   same user when it is enabled, which would kill the real desktop's icons. The session runs
   a private copy from <root>/share (first in XDG_DATA_DIRS), so it only matches that copy.
+- A session counts as up only once the shell has finished starting up (see _boot): until
+  then a monitor change can wedge its startup for good.
 - Teardown kills the session's process groups and every process whose environment carries
   the session's unique XDG_RUNTIME_DIR (ibus-daemon and apps started via D-Bus leave the
   process group), then removes the temporary directories.
@@ -43,12 +45,15 @@ import tempfile
 import time
 from pathlib import Path
 
-BOOT_TIMEOUT = 30.0        # seconds until org.gnome.Shell must answer ShellVersion
+BOOT_TIMEOUT = 60.0        # seconds until the shell has answered and finished starting up
 KILL_GRACE = 5.0           # seconds between SIGTERM and SIGKILL on teardown
 SUN_PATH_MAX = 107         # AF_UNIX path limit (108 bytes including the NUL)
 RUNTIME_PREFIX = "dsr."    # mktemp -d /tmp/dsr.XXXX: keeps the Wayland socket path short
 MARKER = "dragshift-session.json"
 FAKE_SESSION_ID = "dragshift-isolated"
+# What the shell logs on LayoutManager's 'startup-complete' (js/ui/main.js). There is no
+# D-Bus signal for it, so the launcher watches its own log for this line.
+STARTED_MESSAGE = "GNOME Shell started at "
 
 SYSTEM_EXTENSIONS = Path("/usr/share/gnome-shell/extensions")
 # System extensions that must run from a private copy (see module docstring).
@@ -278,6 +283,7 @@ class Session:
         self.log_path: Path | None = None
         self._procs: list[subprocess.Popen] = []
         self._log = None
+        self._log_scanned = 0  # bytes of the shell log already searched by _started_up
         self._base: dict[str, str] = {}
 
     # ----------------------------------------------------------------- public API
@@ -355,12 +361,12 @@ class Session:
         try:
             self._prepare()
             self._boot()
-            if self.scale != 1:
-                self.set_scale(self.scale)
             if self.helper:  # the shell answers before user extensions are enabled
                 from tests.linux.shell import ShellHelper
                 with ShellHelper(self) as helper:
                     helper.wait_ready()
+            if self.scale != 1:  # only after startup-complete, see _boot
+                self.set_scale(self.scale)
         except BaseException:
             tail = self.log_tail()
             self.stop()
@@ -582,6 +588,15 @@ class Session:
 
         self.shell_version = self._wait(version, deadline - time.monotonic(),
                                         f"org.gnome.Shell did not answer within {self.timeout:.0f} s")
+        # The shell answers on D-Bus long before its startup is done; under load, seconds
+        # before. Until LayoutManager emits 'startup-complete', a monitor change (set_scale)
+        # destroys the background managers whose 'loaded' signal _prepareStartupAnimation
+        # awaits, so startup never completes: the overview and its input-blocking cover
+        # pane stay up and user extensions waiting for the startup (the helper) never get
+        # ready. Wait for it here, so nothing a caller does can race it.
+        self._wait(self._started_up, max(10.0, deadline - time.monotonic()),
+                   f"GNOME Shell did not finish starting up within {self.timeout:.0f} s "
+                   f"(no '{STARTED_MESSAGE.strip()}' in its log)", check_alive)
         self.shell_pid = self._find_shell_pid(shell.pid)
         self._shell_start = _pid_start(self.shell_pid) if self.shell_pid else None
         self.display = self._wait(self._find_display, max(5.0, deadline - time.monotonic()),
@@ -612,6 +627,20 @@ class Session:
                 Path(f"/tmp/.X11-unix/X{n}").unlink(missing_ok=True)
             except (OSError, ValueError):
                 continue
+
+    def _started_up(self) -> bool:
+        """Whether the shell has logged STARTED_MESSAGE (its 'startup-complete')."""
+        try:
+            with open(self.log_path, "rb") as f:
+                f.seek(self._log_scanned)
+                chunk = f.read()
+        except OSError:
+            return False
+        if STARTED_MESSAGE.encode() in chunk:
+            return True
+        # Rescan the last partial line next time.
+        self._log_scanned += max(0, chunk.rfind(b"\n") + 1)
+        return False
 
     def _find_shell_pid(self, launcher_pid: int) -> int | None:
         """The gnome-shell process under dbus-run-session (the sh wrapper exec()s into it)."""
