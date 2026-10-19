@@ -213,8 +213,9 @@ def test_grab_screen_falls_back_to_wallpaper(qapp, lx, monkeypatch):
 
 
 @linux_only
-def test_grab_screen_qt_only_when_self_needs_no_excluding(qapp, lx):
+def test_grab_screen_qt_only_when_self_needs_no_excluding(qapp, lx, monkeypatch):
     from dragshift import glass
+    monkeypatch.setattr(lx, "wallpaper_crop", lambda *a: None)   # e.g. not a GNOME desktop
     im = glass.grab_screen(0, 0, 40, 30)              # fallbacks: no capture, no wallpaper
     assert im is not None and im.size == (40, 30) and glass.LAST_SOURCE == ""
     assert glass.grab_screen(0, 0, 40, 30, below_window=1) is None

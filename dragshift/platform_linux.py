@@ -11,6 +11,10 @@ import them lazily inside the functions that need them.
 """
 from __future__ import annotations
 
+import functools
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
 # Clutter.ModifierType bits, as the shell extension reports them in `modifier_mask`
@@ -41,8 +45,135 @@ def capture(x: int, y: int, w: int, h: int, exclude_self: bool = False):
 
 
 def wallpaper_crop(x: int, y: int, w: int, h: int):
-    """The desktop wallpaper under a screen rect as a PIL RGB image of size w×h, or None."""
-    return None
+    """The desktop wallpaper under a screen rect as a PIL RGB image of size w×h, or None.
+
+    Unblurred: callers blur it. Drawn as GNOME draws it on the monitor that contains
+    (x, y); any part of the rect off that monitor is the background colour. No picture
+    (`none`, a missing or undecodable file) gives a solid `primary-color`. None only when
+    the GNOME settings can't be read (not GNOME) or there is no screen to map onto."""
+    import os
+    from PIL import Image
+    s = _read_settings()
+    mon = _monitor_at(x, y)
+    if s is None or mon is None or w <= 0 or h <= 0:
+        return None
+    mx, my, mw, mh = mon
+    bg = _parse_color(s.get("primary-color", ""))
+    dark = s.get("color-scheme") == "prefer-dark" and s.get("picture-uri-dark")
+    path = _uri_path(s.get("picture-uri-dark") if dark else s.get("picture-uri", ""))
+    try:
+        st = os.stat(path) if path and s.get("picture-options") != "none" else None
+    except OSError:
+        st = None    # deleted file or dangling symlink
+    key = (path, st and st.st_mtime_ns, st and st.st_size, bg, mon)
+    if st is not None and key not in _WALL_CACHE:
+        if len(_WALL_CACHE) >= 4:
+            _WALL_CACHE.clear()
+        _WALL_CACHE[key] = _decode_zoom(path, mw, mh, bg)
+    full = _WALL_CACHE.get(key)
+    out = Image.new("RGB", (w, h), bg)
+    if full is not None:
+        out.paste(full, (mx - x, my - y))
+    return out
+
+
+# Wallpaper under a monitor, decoded once at monitor size: (path, mtime, size, colour,
+# monitor geometry) -> image, or None when the file didn't decode.
+_WALL_CACHE: dict = {}
+WALLPAPER_KEYS = ("picture-uri", "picture-uri-dark", "picture-options", "primary-color")
+
+
+def _read_settings() -> dict | None:
+    """The wallpaper keys of org.gnome.desktop.background plus the interface colour-scheme,
+    read with the `gsettings` tool (read-only; `gi` isn't importable in the app's venv).
+    Two processes in parallel, ~4 ms. None when gsettings or the GNOME schemas are missing."""
+    import ast
+    import subprocess
+    cmds = (["gsettings", "list-recursively", "org.gnome.desktop.background"],
+            ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"])
+    procs = []
+    try:
+        for c in cmds:
+            procs.append(subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                          text=True))
+        (bg, _), (scheme, _) = (p.communicate(timeout=2) for p in procs)
+    except (OSError, subprocess.SubprocessError):
+        for p in procs:
+            p.kill()
+            p.wait()
+        return None
+    if procs[0].returncode != 0:
+        return None
+    lines = [ln.split(" ", 2)[1:] for ln in bg.splitlines()]
+    if procs[1].returncode == 0:          # older GNOME has no dark style: use picture-uri
+        lines.append(["color-scheme", scheme.strip()])
+    out = {}
+    for key, text in (ln for ln in lines if len(ln) == 2):
+        if key in WALLPAPER_KEYS or key == "color-scheme":
+            try:
+                out[key] = str(ast.literal_eval(text))   # GVariant text: 'a string'
+            except (ValueError, SyntaxError):
+                out[key] = text.strip("'\"")
+    return out if "picture-uri" in out else None
+
+
+def _monitor_at(x: int, y: int) -> tuple[int, int, int, int] | None:
+    """Logical geometry (x, y, w, h) of the monitor that contains (x, y), else the
+    primary monitor; None without a running Qt GUI application."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QGuiApplication
+    if not isinstance(QGuiApplication.instance(), QGuiApplication):
+        return None
+    scr = QGuiApplication.screenAt(QPoint(x, y)) or QGuiApplication.primaryScreen()
+    if scr is None:
+        return None
+    g = scr.geometry()
+    return g.x(), g.y(), g.width(), g.height()
+
+
+def _uri_path(uri: str) -> str:
+    """Local path of a file:// URI ('' for anything else, e.g. resource:// or empty)."""
+    from urllib.parse import unquote, urlparse
+    u = urlparse(uri or "")
+    return unquote(u.path) if u.scheme == "file" else ""
+
+
+def _parse_color(text: str) -> tuple[int, int, int]:
+    """GNOME colour string -> RGB: #rgb, #rrggbb, or 16 bits per channel #rrrrggggbbbb."""
+    h = (text or "").strip().lstrip("#")
+    if len(h) in (3, 6, 9, 12) and all(c in "0123456789abcdefABCDEF" for c in h):
+        n = len(h) // 3
+        return tuple(int(h[i * n:(i + 1) * n], 16) * 255 // (16 ** n - 1) for i in range(3))
+    return (0, 0, 0)
+
+
+def _decode_zoom(path: str, mw: int, mh: int, bg: tuple[int, int, int]):
+    """The picture as GNOME's `zoom` draws it on an mw×mh monitor: scaled to cover it,
+    centred, the overflow cropped (never squashed). Every other picture-option is drawn
+    the same way (scaled/stretched/centered/wallpaper/spanned are approximations).
+    None when the file isn't a decodable image (e.g. an XML slideshow)."""
+    from PIL import Image, ImageOps
+    try:
+        with Image.open(path) as src:
+            turned = src.getexif().get(0x0112, 1) in (5, 6, 7, 8)   # EXIF: rotated 90°
+            sw, sh = src.size[::-1] if turned else src.size
+            k = max(mw / sw, mh / sh)
+            want = (round(sw * k), round(sh * k))
+            src.draft("RGB", want[::-1] if turned else want)  # JPEG: decode at >= that size
+            im = ImageOps.exif_transpose(src)
+        if im.mode in ("RGBA", "LA", "PA") or (im.mode == "P" and "transparency" in im.info):
+            im = im.convert("RGBA")
+            flat = Image.new("RGB", im.size, bg)
+            flat.paste(im, mask=im.getchannel("A"))
+            im = flat
+        im = im.convert("RGB")
+    except Exception:
+        return None
+    sw, sh = im.size
+    k = max(mw / sw, mh / sh)
+    cw, ch = mw / k, mh / k                                    # monitor in source pixels
+    box = ((sw - cw) / 2, (sh - ch) / 2, (sw + cw) / 2, (sh + ch) / 2)
+    return im.resize((mw, mh), Image.BICUBIC, box=box, reducing_gap=2.0)
 
 
 # ---------------------------------------------------------------- desktop integration
@@ -84,3 +215,71 @@ def reveal(path: str | Path) -> bool:
     watcher.finished.connect(done)
     return True
 
+
+
+# ---------------------------------------------------------------- LibreOffice
+SNAP_LIBREOFFICE = "/snap/bin/libreoffice"
+FLATPAK_LIBREOFFICE = "org.libreoffice.LibreOffice"
+
+
+@functools.lru_cache(maxsize=1)
+def soffice_binary() -> tuple[str, ...] | None:
+    """Command prefix that runs LibreOffice, or None when it isn't installed. Probed once
+    per process: `soffice` / `libreoffice` on PATH (deb, or a snap when /snap/bin is on
+    PATH), the snap launcher, then the flatpak."""
+    for name in ("soffice", "libreoffice"):
+        found = shutil.which(name)
+        if found:
+            return (found,)
+    if os.access(SNAP_LIBREOFFICE, os.X_OK):
+        return (SNAP_LIBREOFFICE,)
+    flatpak = shutil.which("flatpak")
+    if flatpak:
+        try:
+            ok = subprocess.run([flatpak, "info", FLATPAK_LIBREOFFICE], stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, timeout=10).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            ok = False
+        if ok:
+            return (flatpak, "run", FLATPAK_LIBREOFFICE)
+    return None
+
+
+def soffice_workroot(cmd: tuple[str, ...]) -> Path:
+    """Folder for LibreOffice's throwaway profile, input copy and output. A snap can't
+    touch /tmp or hidden folders in $HOME (~/.cache included: the `home` interface skips
+    dot-folders), so a snap gets its own ~/snap/<name>/common; everything else uses
+    $XDG_CACHE_HOME/DragShift/soffice."""
+    if cmd[0].startswith("/snap/bin/"):
+        return Path.home() / "snap" / Path(cmd[0]).name.split(".")[0] / "common" / "DragShift"
+    cache = os.environ.get("XDG_CACHE_HOME", "")
+    base = Path(cache) if os.path.isabs(cache) else Path.home() / ".cache"
+    return base / "DragShift" / "soffice"
+
+
+def kill_process_group(pgid: int) -> None:
+    """SIGKILL every process in group `pgid`. A snap runs under its own AppArmor profile,
+    which takes signals only from unconfined peers, so a confined caller's kill can be
+    refused; whatever survives in a snap's systemd user scope (`snap run` gives each launch
+    its own) is then killed through systemd."""
+    import signal
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+    scopes = set()
+    for proc in Path("/proc").iterdir():
+        try:
+            if not proc.name.isdigit() or \
+                    int((proc / "stat").read_text().rsplit(")", 1)[1].split()[2]) != pgid:
+                continue
+            cgroups = (proc / "cgroup").read_text().splitlines()
+        except (OSError, ValueError, IndexError):
+            continue
+        scopes.update(c.rsplit("/", 1)[1] for c in cgroups if "/snap." in c and c.endswith(".scope"))
+    for scope in scopes:
+        try:
+            subprocess.run(["systemctl", "--user", "kill", "--signal=SIGKILL", scope],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
