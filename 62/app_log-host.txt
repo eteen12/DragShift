@@ -1,0 +1,67 @@
+trigger: following the extension's pointer state
+wallpaper: cache warmed for 1 monitor(s) in 265 ms
+trigger: menu at (412, 374)
+menu: linux capture 20.9 ms
+menu: at (212, 174) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '227.1 KB', rings: Convert 4, Tools 6
+menu: glass on screen 514.4 ms after popup, first frame 151.3 ms
+ring: Tools
+menu: dropped 1 file(s) on Compress (Tools), proposed CopyAction, answered CopyAction
+trigger: menu at (412, 374)
+menu: linux capture 8.9 ms
+menu: at (212, 174) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '227.1 KB', rings: Convert 4, Tools 6
+menu: glass on screen 217.0 ms after popup, first frame 56.8 ms
+ring: Tools
+menu: dropped 1 file(s) on Split (Tools), proposed CopyAction, answered CopyAction
+trigger: menu at (412, 374)
+menu: linux capture 19.5 ms
+menu: at (212, 174) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '227.1 KB', rings: Convert 4, Tools 6
+menu: glass on screen 263.2 ms after popup, first frame 66.7 ms
+ring: Tools
+menu: dropped 1 file(s) on Rotate (Tools), proposed MoveAction, answered CopyAction
+trigger: menu at (412, 374)
+menu: linux capture 9.3 ms
+menu: at (212, 174) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '227.1 KB', rings: Convert 4, Tools 6
+menu: glass on screen 283.9 ms after popup, first frame 40.9 ms
+ring: Tools
+menu: dropped 1 file(s) on Protect (Tools), proposed MoveAction, answered CopyAction
+trigger: menu at (412, 374)
+menu: linux capture 17.4 ms
+menu: at (212, 174) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '227.1 KB', rings: Convert 4, Tools 6
+menu: glass on screen 219.6 ms after popup, first frame 62.6 ms
+ring: Tools
+menu: dropped 1 file(s) on Extract (Tools), proposed CopyAction, answered CopyAction
+trigger: menu at (412, 374)
+menu: linux capture 15.4 ms
+menu: at (212, 174) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '227.1 KB', rings: Convert 4, Tools 6
+menu: glass on screen 270.1 ms after popup, first frame 59.7 ms
+ring: Tools
+menu: dropped 1 file(s) on Metadata (Tools), proposed MoveAction, answered CopyAction
+qt.qpa.wayland.textinput: virtual void QtWaylandClient::QWaylandTextInputv3::disableSurface(wl_surface*) Trying to disable 0x39b400f0 but 0x396222c0 is focused
+qt.qpa.wayland.textinput: virtual void QtWaylandClient::QWaylandTextInputv3::disableSurface(wl_surface*) Trying to disable 0x39b400f0 but 0x396222c0 is focused
+trigger: menu at (412, 374)
+menu: linux capture 10.9 ms
+menu: at (212, 174) 400x400, moved now: False, backdrop: capture
+menu: 2 file(s), hub '2 files', rings: Convert 4, Tools 7
+menu: glass on screen 206.0 ms after popup, first frame 38.1 ms
+ring: Tools
+menu: dropped 2 file(s) on Merge (Tools), proposed CopyAction, answered CopyAction
+
+==== $XDG_STATE_HOME/DragShift/log.txt ====
+
+==== DragShift 1.1.0 started 2026-10-19 07:39:46 ====
+platform: wayland
+screen Meta-0: 1600x900 at (0, 0), output scale 1
+font: Segoe UI → Ubuntu Sans
+ipc: listening at /tmp/dsr.1u4iokin/DragShift
+liquid: refreshed 380x104 at (1201, 777) from capture: capture 20.3 ms (pool thread), GUI thread 24.4 ms (gc 23.9 ms), total 56.1 ms
+liquid: refreshed 380x104 at (1201, 777) from capture: capture 15.3 ms (pool thread), GUI thread 23.6 ms (gc 23.4 ms), total 47.8 ms
+liquid: refreshed 520x330 at (850, 150) from capture: capture 44.5 ms (pool thread), GUI thread 64.2 ms (gc 54.1 ms), total 163.3 ms
+liquid: refreshed 380x104 at (1201, 777) from capture: capture 15.8 ms (pool thread), GUI thread 26.4 ms (gc 25.1 ms), total 51.7 ms
+liquid: refreshed 640x380 at (850, 150) from capture: capture 26.9 ms (pool thread), GUI thread 19.1 ms (gc 18.4 ms), total 80.3 ms
+liquid: refreshed 380x104 at (1201, 777) from capture: capture 18.7 ms (pool thread), GUI thread 24.7 ms (gc 24.4 ms), total 51.5 ms

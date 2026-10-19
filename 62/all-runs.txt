@@ -1,0 +1,51 @@
+# 4 host runs + 1 Docker run
+
+## host1
+PASS nautilus PDF Compress                         5.7s  227 KB → 108 KB; 52% smaller, same text
+PASS nautilus PDF Split                            4.9s  3 PDFs; 1 page each, in order
+PASS nautilus PDF Rotate                           4.9s  all pages at 90°; 3 pages, same text
+PASS nautilus PDF Protect                          7.0s  AES-256, password works; Standard V5 R6 256-bit AES, wrong password refused, 3 pages
+PASS nautilus PDF Extract images                   5.3s  1 image(s) in Report images/; sizes match the embedded images 1200×900
+PASS nautilus PDF Metadata                         5.9s  author/title removed; removed author, title; no XMP
+PASS nautilus Merge 2 PDFs                        11.2s  5 pages; Appendix.pdf first
+DONE 7/7 passed
+
+## host2
+PASS nautilus PDF Compress                         5.0s  227 KB → 108 KB; 52% smaller, same text
+PASS nautilus PDF Split                            4.6s  3 PDFs; 1 page each, in order
+PASS nautilus PDF Rotate                           5.1s  all pages at 90°; 3 pages, same text
+PASS nautilus PDF Protect                          7.1s  AES-256, password works; Standard V5 R6 256-bit AES, wrong password refused, 3 pages
+PASS nautilus PDF Extract images                   4.7s  1 image(s) in Report images/; sizes match the embedded images 1200×900
+PASS nautilus PDF Metadata                         5.8s  author/title removed; removed author, title; no XMP
+PASS nautilus Merge 2 PDFs                         8.5s  5 pages; Appendix.pdf first
+DONE 7/7 passed
+
+## host3
+PASS nautilus PDF Compress                         6.6s  227 KB → 108 KB; 52% smaller, same text
+PASS nautilus PDF Split                            5.1s  3 PDFs; 1 page each, in order
+PASS nautilus PDF Rotate                           4.7s  all pages at 90°; 3 pages, same text
+PASS nautilus PDF Protect                          7.4s  AES-256, password works; Standard V5 R6 256-bit AES, wrong password refused, 3 pages
+PASS nautilus PDF Extract images                   4.7s  1 image(s) in Report images/; sizes match the embedded images 1200×900
+PASS nautilus PDF Metadata                         5.9s  author/title removed; removed author, title; no XMP
+PASS nautilus Merge 2 PDFs                         7.6s  5 pages; Appendix.pdf first
+DONE 7/7 passed
+
+## host4
+PASS nautilus PDF Compress                         5.3s  227 KB → 108 KB; 52% smaller, same text
+PASS nautilus PDF Split                            4.8s  3 PDFs; 1 page each, in order
+PASS nautilus PDF Rotate                           5.2s  all pages at 90°; 3 pages, same text
+PASS nautilus PDF Protect                          7.1s  AES-256, password works; Standard V5 R6 256-bit AES, wrong password refused, 3 pages
+PASS nautilus PDF Extract images                   5.1s  1 image(s) in Report images/; sizes match the embedded images 1200×900
+PASS nautilus PDF Metadata                         5.5s  author/title removed; removed author, title; no XMP
+PASS nautilus Merge 2 PDFs                         8.2s  5 pages; Appendix.pdf first
+DONE 7/7 passed
+
+## docker
+PASS nautilus PDF Compress                         5.0s  227 KB → 108 KB; 52% smaller, same text
+PASS nautilus PDF Split                            4.7s  3 PDFs; 1 page each, in order
+PASS nautilus PDF Rotate                           5.0s  all pages at 90°; 3 pages, same text
+PASS nautilus PDF Protect                          6.5s  AES-256, password works; Standard V5 R6 256-bit AES, wrong password refused, 3 pages
+PASS nautilus PDF Extract images                   4.4s  1 image(s) in Report images/; sizes match the embedded images 1200×900
+PASS nautilus PDF Metadata                         5.0s  author/title removed; removed author, title; no XMP
+PASS nautilus Merge 2 PDFs                         7.1s  5 pages; Appendix.pdf first
+DONE 7/7 passed
