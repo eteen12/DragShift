@@ -358,6 +358,7 @@ def test_no_capture_falls_back_to_the_wallpaper_on_the_gui_thread(ext, qapp, mon
     assert logged[-1].startswith("liquid: refreshed 420x320 at (300, 120) from wallpaper")
 
 
+@linux_only
 def test_worker_capture_has_its_own_connection(monkeypatch):
     """capture(worker=True) never holds the connection the GUI thread's calls use: a
     GetPointer poll answers while a slow capture is under way."""
