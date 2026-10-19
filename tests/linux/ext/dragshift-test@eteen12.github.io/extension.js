@@ -141,6 +141,9 @@ function describe(actor, stacking, focus) {
         minimized: new GLib.Variant('b', w.minimized),
         stacking: new GLib.Variant('u', stacking),
         window_type: new GLib.Variant('s', WINDOW_TYPES[w.get_window_type()] ?? 'unknown'),
+        // The shell's app for the window: '<desktop file id>' when one matches its
+        // app_id / WM_CLASS, else a 'window:N' stand-in (what the dock shows).
+        app: new GLib.Variant('s', Shell.WindowTracker.get_default().get_window_app(w)?.get_id() ?? ''),
     };
 }
 
