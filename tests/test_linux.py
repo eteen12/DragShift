@@ -107,6 +107,8 @@ def watcher(qapp, monkeypatch):
     w.hide_menu.connect(lambda: w.events.append(("hide",)))
     yield w
     w.timer.stop()
+    if LINUX:
+        w._probe.stop()
 
 
 def test_tick_state_machine(watcher, monkeypatch):
@@ -152,7 +154,8 @@ def test_drag_without_key_opens_nothing(watcher, monkeypatch):
 @linux_only
 def test_watcher_idle_without_pointer_data(watcher):
     watcher.start()
-    assert not watcher.timer.isActive()        # no extension: no polling
+    assert not watcher.timer.isActive()        # no extension: no polling, only the probe
+    assert watcher._probe.isActive()
     watcher._tick()
     assert watcher.events == [] and FakeCursor.reads == 0
 

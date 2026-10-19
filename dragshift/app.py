@@ -147,6 +147,10 @@ class DragShiftApp(QObject):
         self.watcher.set_key(self.settings.get("trigger"))
         self.watcher.show_menu.connect(lambda pos: self.menu.popup(pos))
         self.watcher.toggle_ring.connect(self.menu.next_ring)
+        if IS_LINUX:  # which ring a Shift tap flipped to (read by tests/linux/test_trigger.py)
+            self.watcher.toggle_ring.connect(lambda: print(
+                "ring:", self.menu.ring_names[self.menu.ring_idx] if self.menu.ring_names else "-",
+                flush=True))
         self.watcher.hide_menu.connect(self.menu.close_menu)
         self.watcher.start()
 
