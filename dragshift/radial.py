@@ -158,6 +158,9 @@ class RadialMenu(QWidget):
         self.swap_anim.valueChanged.connect(self._set_swap)
         self.hub_timer = QTimer(self, singleShot=True, interval=420, timeout=self.next_ring)
         self.frame = QTimer(self, interval=16, timeout=self._tick)   # 60 fps springs
+        if IS_LINUX:  # the ring a hub hover flipped to (read by tests/linux/test_menu_drop.py)
+            self.hub_timer.timeout.connect(lambda: print(
+                f"menu: hub hover, ring: {self.ring_names[self.ring_idx]}", flush=True))
 
     # ------------------------------------------------------------ show / hide
     def popup(self, pos: QPoint | None = None, paths: list[str] | None = None):
@@ -391,6 +394,10 @@ class RadialMenu(QWidget):
         for items in self.rings.values():
             self._render(len(items))
         self.spring = [0.0] * len(self.items)
+        if IS_LINUX:  # what a drop (or click mode) loaded: tests/linux/test_menu_drop.py
+            rings = ", ".join(f"{k} {len(v)}" for k, v in self.rings.items()) or "none"
+            print(f"menu: {len(paths)} file(s), hub {self.hub_text!r}, rings: {rings}",
+                  flush=True)
         self.update()
 
     def next_ring(self):
@@ -480,9 +487,15 @@ class RadialMenu(QWidget):
         if not paths:
             e.ignore()
             return
+        first = not self.got_drag
         self.got_drag = True
         if paths != self.paths:
             self._load(paths)
+        if IS_LINUX and first:
+            # The file enters where the menu opened. On GNOME that is often a petal: the
+            # menu is clamped to the work area, and desktop icons sit at its right edge.
+            # Being there is no visit, so it must not arm the hub-hover flip (#35).
+            self.hover = self.hit(e.position())
         e.setDropAction(Qt.CopyAction)  # never let a Shift(=move) drop delete the source
         e.accept()
 
@@ -503,10 +516,16 @@ class RadialMenu(QWidget):
             e.setDropAction(Qt.CopyAction)
             e.accept()
             item, paths = items[idx], list(self.paths)
+            if IS_LINUX:
+                print(f"menu: dropped {len(paths)} file(s) on {item.label} "
+                      f"({self.ring_names[self.ring_idx]}), proposed "
+                      f"{e.proposedAction().name}, answered {e.dropAction().name}", flush=True)
             self.hide()
             # return to Explorer's drag loop immediately; do the work after
             QTimer.singleShot(0, lambda: self.activated.emit(item, paths))
         else:
+            if IS_LINUX:
+                print("menu: dropped beside the petals, nothing to run", flush=True)
             e.ignore()
             self.close_menu()
 
