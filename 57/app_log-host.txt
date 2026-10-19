@@ -1,0 +1,16 @@
+trigger: following the extension's pointer state
+wallpaper: cache warmed for 1 monitor(s) in 205 ms
+trigger: menu at (852, 265)
+menu: linux capture 20.2 ms
+menu: at (652, 65) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '354.2 KB', rings: Convert 9, Tools 8
+menu: glass on screen 391.6 ms after popup, first frame 122.2 ms
+menu: dropped 1 file(s) on PNG (Convert), proposed CopyAction, answered CopyAction
+
+==== $XDG_STATE_HOME/DragShift/log.txt ====
+
+==== DragShift 1.1.0 started 2026-10-19 06:48:49 ====
+platform: wayland
+screen Meta-0: 1600x900 at (0, 0), output scale 1
+font: Segoe UI → Ubuntu Sans
+ipc: listening at /tmp/dsr.n5wuqwk5/DragShift
