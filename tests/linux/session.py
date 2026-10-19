@@ -31,6 +31,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import ast
 import atexit
 import functools
 import json
@@ -235,6 +236,12 @@ _LIVE: set["Session"] = set()
 
 
 @atexit.register
+def new_root() -> Path:
+    """An empty session root for Session(root=...), to boot more than one session on the
+    same HOME (log out and back in). Remove it with shutil.rmtree when done."""
+    return Path(tempfile.mkdtemp(prefix="dragshift-session-"))
+
+
 def _stop_all() -> None:
     for s in list(_LIVE):
         s.stop()
@@ -253,13 +260,19 @@ class Session:
     data_files: {path relative to the session's XDG_DATA_HOME: text}, written before the
         shell boots (e.g. "applications/<id>.desktop", which the shell only picks up
         seconds later when it appears while it runs).
+    root: boot on this session root (from new_root()) instead of a fresh one: the same
+        HOME, XDG directories and dconf settings as the session that used it before, like
+        logging out and back in. Each start gets a new runtime dir, bus and shell, and the
+        previous shell log is kept as gnome-shell.<n>.log. stop() leaves the root in place;
+        the caller removes it (shutil.rmtree).
     """
 
     def __init__(self, size: tuple[int, int] = (1600, 900), extensions=(),
                  timeout: float = BOOT_TIMEOUT,
                  shell_args=(), keep: bool = False, helper: bool = False,
-                 scale: float = 1.0, data_files=None):
+                 scale: float = 1.0, data_files=None, root=None):
         self.size = size
+        self._given_root = Path(root) if root is not None else None
         self.scale = scale
         self.data_files = dict(data_files or {})
         self.extensions = [Path(e) for e in extensions]
@@ -425,7 +438,8 @@ class Session:
         if self._log:
             self._log.close()
             self._log = None
-        dirs = [str(d) for d in (self.runtime_dir, self.root) if d]
+        dirs = [str(d) for d in (self.runtime_dir, self.root) if d
+                and not (d == self.root and self._given_root is not None)]
         for mp in sorted(_mounts_under(dirs), key=len, reverse=True):
             _unmount(mp)
         if self.keep:  # kept for debugging: drop the marker so no later start reaps it
@@ -439,7 +453,14 @@ class Session:
 
     # ----------------------------------------------------------------- internals
     def _prepare(self) -> None:
-        self.root = Path(tempfile.mkdtemp(prefix="dragshift-session-"))
+        if self._given_root is not None:
+            if not self._given_root.name.startswith("dragshift-session-"):
+                raise SessionError(f"not a session root (see new_root()): {self._given_root}")
+            self.root = self._given_root
+            self.root.mkdir(mode=0o700, exist_ok=True)
+        else:
+            self.root = Path(tempfile.mkdtemp(prefix="dragshift-session-"))
+        again = (self.root / "home").is_dir()   # a "re-login" on a used root
         self.runtime_dir = Path(tempfile.mkdtemp(prefix=RUNTIME_PREFIX, dir="/tmp"))
         os.chmod(self.runtime_dir, 0o700)  # Mutter refuses a runtime dir that is not 0700
         (self.runtime_dir / MARKER).write_text(json.dumps(
@@ -450,6 +471,11 @@ class Session:
         if len(str(self.runtime_dir / self.wayland_display)) + len(".lock") > SUN_PATH_MAX:
             raise SessionError("Wayland socket path too long; use a shorter /tmp")
         self.log_path = self.root / "gnome-shell.log"
+        if self.log_path.exists():
+            n = 1
+            while (self.root / f"gnome-shell.{n}.log").exists():
+                n += 1
+            self.log_path.rename(self.root / f"gnome-shell.{n}.log")
 
         dirs = {k: self.root / sub for k, sub in (
             ("HOME", "home"), ("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"),
@@ -458,7 +484,7 @@ class Session:
             # /tmp sockets (e.g. DragShift's QLocalServer /tmp/DragShift-<user>).
             ("TMPDIR", "tmp"))}
         for d in dirs.values():
-            d.mkdir()
+            d.mkdir(exist_ok=again)
         self.mode = "ubuntu" if ubuntu_mode() else "user"
         ubuntu = self.mode == "ubuntu"
         env = {k: v for k, v in os.environ.items() if k in _PASSTHROUGH or k.startswith("LC_")}
@@ -482,16 +508,17 @@ class Session:
         # Private copies go to a *system* data dir of the session (not XDG_DATA_HOME):
         # Ubuntu's shell refuses per-user copies of session-mode extensions.
         private = self.root / "share" / "gnome-shell" / "extensions"
-        private.mkdir(parents=True)
+        private.mkdir(parents=True, exist_ok=again)
         for uuid in PRIVATE_COPY_EXTENSIONS:
             if (SYSTEM_EXTENSIONS / uuid).is_dir():
-                shutil.copytree(SYSTEM_EXTENSIONS / uuid, private / uuid, symlinks=True)
+                shutil.copytree(SYSTEM_EXTENSIONS / uuid, private / uuid, symlinks=True,
+                                dirs_exist_ok=again)
         ext_dir = dirs["XDG_DATA_HOME"] / "gnome-shell" / "extensions"
-        ext_dir.mkdir(parents=True)
+        ext_dir.mkdir(parents=True, exist_ok=again)
         # Private-bus stand-in for systemd, so Xwayland can start (see fake_systemd.py).
         shutil.copy(Path(__file__).with_name("fake_systemd.py"), self.root / "fake_systemd.py")
         services = dirs["XDG_DATA_HOME"] / "dbus-1" / "services"
-        services.mkdir(parents=True)
+        services.mkdir(parents=True, exist_ok=again)
         (services / "org.freedesktop.systemd1.service").write_text(
             "[D-BUS Service]\nName=org.freedesktop.systemd1\n"
             f"Exec={gi_python()} -I {self.root / 'fake_systemd.py'}\n")
@@ -504,16 +531,23 @@ class Session:
         for src in self.extensions:
             if not (src / "metadata.json").is_file():
                 raise SessionError(f"not an extension directory: {src}")
-            shutil.copytree(src, ext_dir / src.name, symlinks=True)
+            shutil.copytree(src, ext_dir / src.name, symlinks=True, dirs_exist_ok=again)
         enabled = [e.name for e in self.extensions]
         if not ubuntu:  # the user mode enables nothing by itself
             enabled = [u for u in UBUNTU_DEFAULT_EXTENSIONS
                        if (SYSTEM_EXTENSIONS / u).is_dir()] + enabled
-        self._seed_dconf(dirs["XDG_CONFIG_HOME"], enabled)
+        if again and (dirs["XDG_CONFIG_HOME"] / "dconf" / "user").exists():
+            # A login keeps the user's settings (enabled-extensions too); only make sure
+            # the extensions asked for this time are on.
+            self._post_boot_settings = []
+            self._ensure_enabled = enabled
+        else:
+            self._ensure_enabled = []
+            self._seed_dconf(dirs["XDG_CONFIG_HOME"], enabled)
 
     def _seed_dconf(self, config_home: Path, enabled: list[str]) -> None:
         keyfiles = self.root / "dconf-seed"
-        keyfiles.mkdir()
+        keyfiles.mkdir(exist_ok=True)
         seed = _DCONF_SEED.format(
             enabled="[" + ", ".join(f"'{u}'" for u in enabled) + "]" if enabled else "@as []")
         ding = (SYSTEM_EXTENSIONS / "ding@rastersoft.com").is_dir()
@@ -521,7 +555,7 @@ class Session:
             seed += "\n[org/gnome/shell/extensions/ding]\n" + "".join(
                 f"{k}={v}\n" for k, v in UBUNTU_DING_SETTINGS)
         (keyfiles / "00-session").write_text(seed)
-        (config_home / "dconf").mkdir()
+        (config_home / "dconf").mkdir(exist_ok=True)
         if shutil.which("dconf"):
             subprocess.run(["dconf", "compile", str(config_home / "dconf" / "user"),
                             str(keyfiles)], check=True, capture_output=True)
@@ -555,6 +589,7 @@ class Session:
         self._base["DBUS_SYSTEM_BUS_ADDRESS"] = self.system_bus_address
 
         addr_file = self.root / "bus-address"
+        addr_file.unlink(missing_ok=True)   # a previous boot's, on a reused root
         # The bus daemon (and every service it activates) sees WAYLAND_DISPLAY from the
         # start; the shell itself must not, or it would not own the display.
         wrapper = ('printf %s "$DBUS_SESSION_BUS_ADDRESS" > "$1"; shift; '
@@ -605,6 +640,14 @@ class Session:
         self.xauthority = str(auth[0]) if auth else None
         for args in getattr(self, "_post_boot_settings", []):
             self.run(["gsettings", "set", *args], check=True)
+        if getattr(self, "_ensure_enabled", None):
+            out = self.run(["gsettings", "get", "org.gnome.shell", "enabled-extensions"],
+                           check=True).stdout.strip()
+            on = ast.literal_eval(out.removeprefix("@as ")) if out else []
+            missing = [u for u in self._ensure_enabled if u not in on]
+            if missing:
+                self.run(["gsettings", "set", "org.gnome.shell", "enabled-extensions",
+                          repr(list(on) + missing)], check=True)
         pairs = [f"WAYLAND_DISPLAY={self.wayland_display}", f"DISPLAY={self.display}",
                  "XDG_SESSION_TYPE=wayland"]
         if self.xauthority:
