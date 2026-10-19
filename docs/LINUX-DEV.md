@@ -46,3 +46,30 @@ python3 -m venv .venv
 `DISPLAY` or `WAYLAND_DISPLAY` is needed. It also points `XDG_CONFIG_HOME`, `XDG_STATE_HOME`,
 `XDG_DATA_HOME` and `XDG_CACHE_HOME` at a temporary folder for the run, so tests never touch
 `~/.config/DragShift` or `~/.local`.
+
+## Isolated GNOME Shell session (`-m gnome` tests)
+
+Tests marked `gnome` run inside a throwaway headless GNOME Shell 46 session started by
+`tests/linux/session.py`. It needs `gnome-shell`, `dbus` (`dbus-run-session`,
+`dbus-daemon`, `dbus-update-activation-environment`), `gdbus` and `python3-gi`, which a
+normal Ubuntu desktop already has. Without them, the `gnome` tests are skipped.
+
+```sh
+uv run pytest -m gnome tests/linux          # session tests only
+uv run python -m tests.linux.session -- nautilus --new-window /tmp   # run a command inside
+uv run python -m tests.linux.session        # print the session env, Ctrl-C to stop
+```
+
+In tests, use the session-scoped `gnome_session` fixture. `gnome_session.env()` is the
+environment for child processes, `gnome_session.run(cmd)` and `gnome_session.popen(cmd)`
+run inside the session, and `gnome_session.log_path` is the shell's log.
+`Session(extensions=[dir])` installs and enables extra extensions.
+
+The session never touches your real desktop:
+- It uses its own HOME, XDG directories, `XDG_RUNTIME_DIR` (`/tmp/dsr.*`), session bus
+  and an empty private system bus.
+- It runs a private copy of DING, because DING kills every other DING of the same user
+  when it starts.
+- Teardown kills every process that carries the session's runtime dir, then deletes the
+  temporary directories. This also happens on Ctrl-C. A session whose launcher was
+  SIGKILLed is cleaned up by the next start.
