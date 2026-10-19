@@ -58,6 +58,39 @@ def _red_pixels(im: Image.Image) -> int:
     return both.histogram()[255]
 
 
+def _changed(im: Image.Image, ref: Image.Image, threshold: int = 16) -> Image.Image:
+    """Mask (L, 0 or 255) of the pixels where some channel of `im` differs from `ref` by
+    more than `threshold`."""
+    assert im.size == ref.size, (im.size, ref.size)
+    r, g, b = ImageChops.difference(im.convert("RGB"), ref.convert("RGB")).split()
+    return ImageChops.lighter(ImageChops.lighter(r, g), b).point(
+        lambda v: 255 if v > threshold else 0)
+
+
+def _count(mask: Image.Image) -> int:
+    return mask.histogram()[255]
+
+
+MIN_ICON = 16       # the smallest drag icon GNOME draws is 16x16
+
+
+def _icon_box(shot: Image.Image, no_drag: Image.Image, at: tuple[int, int]):
+    """Bounding box of what a drag added to `shot` (a screenshot of the region) compared
+    with the same region without a drag, if it looks like a drag icon: at least MIN_ICON
+    each way and covering the pointer `at` (region coordinates). Else None. Whatever
+    picture the icon is (a thumbnail, a placeholder, a theme's mime-type icon), only
+    where it is counts."""
+    box = _changed(shot, no_drag).getbbox()
+    if not box:
+        return None
+    x0, y0, x1, y1 = box
+    if x1 - x0 < MIN_ICON or y1 - y0 < MIN_ICON:
+        return None
+    if not (x0 <= at[0] < x1 and y0 <= at[1] < y1):
+        return None
+    return box
+
+
 def _evidence(im: Image.Image, name: str) -> None:
     d = os.environ.get("DRAGSHIFT_EVIDENCE_DIR")
     if d:
@@ -280,9 +313,14 @@ def test_big_rects_come_as_parallel_strips(cap_session, shell, client):
 @gnome
 def test_drag_icon_is_left_out(cap_session, shell, client, probe):
     """Acceptance (2): during a real drag from Nautilus, with the drag icon inside the
-    region, capture() has no icon pixels (mean abs diff vs the no-drag capture < 3) while
-    the helper's screenshot does differ (> 8). The helper's screenshot is taken right
-    after capture(), so it also shows the icon was put back at once (no flicker)."""
+    region, capture() has no icon pixels (not one pixel differs from the no-drag capture)
+    while the helper's screenshot shows the icon. The helper's screenshot is taken right
+    after capture(), so it also shows the icon was put back at once (no flicker).
+
+    The icon is found as what the drag adds to the helper's screenshot, not by its
+    colour: Nautilus drags the file's thumbnail (the flat red picture) where it can make
+    one, and the theme's image icon where it can't (the Docker image has no thumbnailer,
+    and its bubblewrap sandbox can't run in an unprivileged container; #96)."""
     s = cap_session
     big_red = _png(Image.new("RGB", (256, 192), RED))   # a big, flat red thumbnail
     with Files(s, shell) as files:
@@ -293,6 +331,7 @@ def test_drag_icon_is_left_out(cap_session, shell, client, probe):
         target = (fx + fw // 2, fy + 170)               # above the probe's status line
         side = 200
         rect = (target[0] - side // 2, target[1] - side // 2, side, side)
+        at = (target[0] - rect[0], target[1] - rect[1])  # the pointer in the region
 
         inject.glide(shell, *target)                    # same place, no drag yet
         time.sleep(0.5)
@@ -305,11 +344,16 @@ def test_drag_icon_is_left_out(cap_session, shell, client, probe):
             inject.drag_to(shell, *target, start=start, dur=0.8, release=False)
             try:
                 probe.wait_for("dragEnter", after=mark, timeout=10)
-                # Nautilus may start the drag with a "loading" placeholder icon and
-                # switch to the thumbnail later: wait for the red picture on screen.
+                # Wait until the icon is on screen and has stopped changing: Nautilus
+                # may start with a "loading" placeholder and switch to the thumbnail.
                 deadline = time.monotonic() + 3
-                while (_red_pixels(_helper_area(s, shell, *rect, "drag-wait.png")) < 500
-                       and time.monotonic() < deadline):
+                last = None
+                while time.monotonic() < deadline:
+                    shot = _helper_area(s, shell, *rect, "drag-wait.png")
+                    if (_icon_box(shot, before, at) and last is not None
+                            and _diff(shot, last) == 0):
+                        break
+                    last = shot
                     time.sleep(0.1)
                 assert shell.get_pointer()[:2] == target
                 during = client.capture(*rect)
@@ -318,21 +362,26 @@ def test_drag_icon_is_left_out(cap_session, shell, client, probe):
             finally:
                 inject.button_up(shell)          # refused by the probe: nothing changes
                 shell.release_all()
-            if _red_pixels(during_helper) >= 500:
+            if _icon_box(during_helper, before, at):
                 break
             time.sleep(1.5)                      # the refused drag's icon flies back
+        icon = _changed(during_helper, before)
+        leak = _changed(during, before)
+        box = _icon_box(during_helper, before, at)
         d_capture, d_helper = _diff(during, before), _diff(during_helper, before)
         red, red_capture = _red_pixels(during_helper), _red_pixels(during)
-        print(f"\ndrag in progress, {side}x{side} around the pointer: capture vs no-drag "
-              f"{d_capture:.3f}, helper vs no-drag {d_helper:.3f}; red icon pixels: "
-              f"helper {red}, capture {red_capture}")
-        sbs = Image.new("RGB", (side * 3 + 20, side), "white")
-        for i, im in enumerate((before, during, during_helper)):
+        print(f"\ndrag in progress, {side}x{side} around the pointer: icon in the helper's "
+              f"screenshot {box} ({_count(icon)} changed pixels), changed pixels in "
+              f"capture() {_count(leak)}; mean diff vs no-drag: capture {d_capture:.3f}, "
+              f"helper {d_helper:.3f}; red pixels: helper {red}, capture {red_capture}")
+        sbs = Image.new("RGB", (side * 4 + 30, side), "white")
+        for i, im in enumerate((before, during, during_helper, icon.convert("RGB"))):
             sbs.paste(im, (i * (side + 10), 0))
         _evidence(sbs, "drag-side-by-side.png")
         with Image.open(full) as im:
             _evidence(im.convert("RGB"), "drag-during-full.png")
-        assert d_helper > 8 and red > 500, "the drag icon is not in the region"
+        assert box, "the drag icon is not in the helper's screenshot of the region"
+        assert _count(leak) == 0, f"capture() shows {_count(leak)} pixels of the drag icon"
         assert d_capture < 3 and red_capture == 0
 
 
