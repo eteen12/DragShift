@@ -13,6 +13,7 @@ Session tests load the extension only inside the isolated session from
 tests/linux/session.py and inject input with tests/linux/inject.py.
 """
 import io
+import json
 import os
 import secrets
 import shutil
@@ -150,12 +151,13 @@ def _probe(session, shell, platform="wayland"):
 
 
 def _watcher_process(session):
-    """Another process that holds the Escape watch until it is killed."""
-    code = ("import sys, time; from dragshift import platform_linux as p; "
-            "print(p.watch_escape(True, lambda: None), flush=True); time.sleep(600)")
-    proc = session.popen([sys.executable, "-c", code], env={"PYTHONPATH": str(ROOT)},
+    """Another process that holds the Escape watch until it is killed: a test helper
+    module, which the extension's caller check lets in inside the test session (#93)."""
+    proc = session.popen([sys.executable, "-m", "tests.linux.caller", "hold-escape"],
+                         cwd=ROOT, env={"PYTHONPATH": str(ROOT)},
                          stdout=subprocess.PIPE, text=True)
-    return proc, proc.stdout.readline().strip()
+    status, body = json.loads(proc.stdout.readline())
+    return proc, str(status == "ok" and body == [True])
 
 
 def _escape_reaches(probe, shell) -> bool:

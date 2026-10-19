@@ -501,6 +501,10 @@ def check_extension_version():
         elif v != VERSION:
             print(f"warning: the GNOME Shell extension is from DragShift {v}, the app is "
                   f"{VERSION}; reinstall to update it", file=sys.stderr, flush=True)
+        if v is not None and platform_linux.extension_refuses_us():
+            print("the GNOME Shell extension only answers the DragShift app: start it with "
+                  "`python -m dragshift` or the dragshift launcher", file=sys.stderr,
+                  flush=True)
 
     t = threading.Thread(target=check, name="extension-version", daemon=True)
     t.start()

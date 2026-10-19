@@ -18,7 +18,8 @@ ZIP="$OUT/$UUID.shell-extension.zip"
 
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
-cp "$HERE/$UUID/extension.js" "$HERE/$UUID/placement.js" "$HERE/$UUID/dbus.xml" "$STAGE/"
+cp "$HERE/$UUID/extension.js" "$HERE/$UUID/caller.js" "$HERE/$UUID/placement.js" \
+    "$HERE/$UUID/dbus.xml" "$STAGE/"
 
 python3 - "$ROOT/dragshift/__init__.py" "$HERE/$UUID/metadata.json" "$STAGE/metadata.json" <<'PY'
 import json, re, sys
@@ -33,9 +34,10 @@ PY
 
 rm -f "$ZIP"
 if command -v gnome-extensions >/dev/null 2>&1; then
-    gnome-extensions pack --force --extra-source=dbus.xml --extra-source=placement.js \
-        --out-dir="$OUT" "$STAGE"
+    gnome-extensions pack --force --extra-source=dbus.xml --extra-source=caller.js \
+        --extra-source=placement.js --out-dir="$OUT" "$STAGE"
 else
-    (cd "$STAGE" && python3 -m zipfile -c "$ZIP" extension.js metadata.json dbus.xml placement.js)
+    (cd "$STAGE" && python3 -m zipfile -c "$ZIP" extension.js metadata.json dbus.xml caller.js \
+        placement.js)
 fi
 echo "$ZIP"

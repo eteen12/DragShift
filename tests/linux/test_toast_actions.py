@@ -20,41 +20,11 @@ pytest.importorskip("tests.linux.session", reason="needs the #14 session launche
 pytestmark = pytest.mark.gnome
 ROOT = Path(__file__).resolve().parents[2]
 
-DRIVER = r"""
-import json, sys
-from pathlib import Path
-from PIL import Image
-from PySide6.QtCore import QEventLoop, Qt, QTimer
-from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
-
-app = QApplication([])
-from dragshift import convert, report, toasts
-
-def spin(ms):
-    loop = QEventLoop()
-    QTimer.singleShot(ms, loop.quit)
-    loop.exec()
-
-button, work = sys.argv[1], Path(sys.argv[2])
-work.mkdir(parents=True)
-src = work / "photo.png"
-Image.new("RGB", (64, 48), (200, 80, 40)).save(src)
-outs = convert.image_to(src, "JPG")
-card = toasts.ToastStack().new()
-card.done(report.summarize("JPG", [src], outs))
-spin(500)                                   # painted: card.buttons now holds the rects
-rect = dict(card.buttons)[button]
-QTest.mouseClick(card, Qt.LeftButton, Qt.NoModifier, rect.center().toPoint())
-spin(1500)                                  # let the D-Bus reply / xdg-open happen
-print(json.dumps({"outs": [str(o) for o in outs], "buttons": [n for n, _ in card.buttons],
-                  "state": card.state, "title": card.title, "detail": card.detail}))
-"""
-
 
 def _drive(session, button: str, name: str) -> dict:
     work = Path(session.env()["HOME"]) / name
-    r = session.run([sys.executable, "-c", DRIVER, button, str(work)], cwd=ROOT,
+    r = session.run([sys.executable, "-m", "tests.linux.toast_driver", "click", button,
+                     str(work)], cwd=ROOT,
                     env={"QT_QPA_PLATFORM": "wayland", "PYTHONPATH": str(ROOT)})
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout.splitlines()[-1])
