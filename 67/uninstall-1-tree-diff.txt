@@ -1,0 +1,57 @@
+cache/mesa_shader_cache/0b: - -> drwx------ dir
+cache/mesa_shader_cache/0b/649571106907382eed937a46925be5d13fe930: - -> -rw-r--r-- 79bc351296344a20d06fb5f299b693fa854577070c0905ad36d72e1020bd2ef0
+cache/mesa_shader_cache/1b/1cd90eaae3dbf11a2174da315df85b0b5ad196: - -> -rw-r--r-- 0ee32f01d0210fa3b38bf4ac0fae1aa352162ba567c033b152c774cbe4d1170b
+cache/mesa_shader_cache/25: - -> drwx------ dir
+cache/mesa_shader_cache/25/8e8e6474c7892ca549cc0d19b3804c117b97be: - -> -rw-r--r-- 552a47cf61ff76b2faa7bc89144f234edf3692219e4d1b3373608edcf1c8aaa0
+cache/mesa_shader_cache/46: - -> drwx------ dir
+cache/mesa_shader_cache/46/f6ed2f3daf4f899942f2cc6b1cc09c3e5eac02: - -> -rw-r--r-- 5dfe842f7b29ce29d7a5d77a67ec45e8d2bc3306e28501f700cbe5dd2dd9c7d8
+cache/mesa_shader_cache/65: - -> drwx------ dir
+cache/mesa_shader_cache/65/523aaa4c0942b617f2a7dc14beb3248d70ce98: - -> -rw-r--r-- 79bc351296344a20d06fb5f299b693fa854577070c0905ad36d72e1020bd2ef0
+cache/mesa_shader_cache/72/31dc772434eb2587c32faef975ab424605b041: - -> -rw-r--r-- 0ee32f01d0210fa3b38bf4ac0fae1aa352162ba567c033b152c774cbe4d1170b
+cache/mesa_shader_cache/73: - -> drwx------ dir
+cache/mesa_shader_cache/73/f707dfd6df11ea162c1d89facf62bbb6615720: - -> -rw-r--r-- 168cc35ca28d1e12d6f5c533a8874d6f855a07fa6f481d40bd09493d8b1e66e0
+cache/mesa_shader_cache/82: - -> drwx------ dir
+cache/mesa_shader_cache/82/90305aa64ec7a290cbe1f0fbfd21aec6d02400: - -> -rw-r--r-- cf997055f27ca199c7af7397fd43ef5f3e011f7386b20f7a74ab95a5af1add49
+cache/mesa_shader_cache/89: - -> drwx------ dir
+cache/mesa_shader_cache/89/cffe1170b86a9a00c26d6f36a737ab4c0e73de: - -> -rw-r--r-- 143dfa64d037c3ed5f0efe1b4d99ab5e7bb628787fc6abed80ffbfbc17f6a913
+cache/mesa_shader_cache/d7: - -> drwx------ dir
+cache/mesa_shader_cache/d7/22d72e3512221093ace2a10f36f55866cef35e: - -> -rw-r--r-- d7cf1e538db9a93ad8c6c20d2a0cadf6a511a8dde003ebb438570e0713e9ccb8
+cache/mesa_shader_cache/d7/b4561c20a7ee894bd1c61166b6b08d2525b3e4: - -> -rw-r--r-- 5dd2c5da39c51809a3ff6d08410f3aab08fe482283d08fbf0c8edb380ea1dc0f
+cache/mesa_shader_cache/f3: - -> drwx------ dir
+cache/mesa_shader_cache/f3/22e845f1262756e5c708b3c19fcfd6ea7a7115: - -> -rw-r--r-- ffbd2f7685ef9383d8d89517017401cf6585775252cc6ecc13cde86470729b51
+cache/mesa_shader_cache/fe/0e139671b1717cad8397e93da7ebb406e6dbf9: - -> -rw-r--r-- 11a9e874b883045cf331b5b52fd5405baf4b2d54d6d7974f45a495ebd9c48853
+cache/mesa_shader_cache/index: -rw-r--r-- 84ad4e1be783a59879b8ee8ac589f9b3c0ac4c7e491891ca7d6955a55b1933db -> -rw-r--r-- b4474e7549b184d710947e9a64c834d274656a8cbc7cb95ccc95745e055cf18e
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Audio.db: - -> -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Audio.db-shm: - -> -rw-r--r-- 5094e3eafa2295c19fed12b677a13e00ea17e99cf6176e5658f4769637544ec9
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Audio.db-wal: - -> -rw-r--r-- cc120487e200268bfaf5d425c952208c1bccdad78003ff9df4e2258d226b2d27
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Documents.db: - -> -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Documents.db-shm: - -> -rw-r--r-- 9d9abbe533dc99937ed1b114836d198c4cc6e814ce1b9c5134856389a39d8ecf
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Documents.db-wal: - -> -rw-r--r-- db7d2eff3b1486b035b4d1da48dfcb0e0e55b6c7e810dd6b74f2e72c0188b9da
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23FileSystem.db: - -> -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23FileSystem.db-shm: - -> -rw-r--r-- c83dd528c881fa972ba9651869d6bc6203b903cddc54a035173d4f5b4a09b1d9
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23FileSystem.db-wal: - -> -rw-r--r-- 18af99110d12d1356b092c499f7aa536efd78d805cfdd5dd07c4f97320485cf7
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Pictures.db: - -> -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Pictures.db-shm: - -> -rw-r--r-- 1fcb6c9e6fbb0de7e193c4c267c5e474cddc51dcdbff69ac19980e3252327ad4
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Pictures.db-wal: - -> -rw-r--r-- b96f70c2e004ccdb3bd45cf5c1a63baf7bb72b95f775ada63358715166d9e5b1
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Software.db: - -> -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Software.db-shm: - -> -rw-r--r-- 79049655b3d782dbd0d45f13d10762775a5db6507b7374384df594bd1511840e
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Software.db-wal: - -> -rw-r--r-- bff077035f9c89de5fc09c6af516276ce0f3f8cb048d6724f80c73a3503c4904
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Video.db: - -> -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Video.db-shm: - -> -rw-r--r-- d1926e36ab7606cd1d6c6c8926b63066bebe5e372ae2ca0fc615e516516262b1
+cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Video.db-wal: - -> -rw-r--r-- 733272618f8da7e2d3191740399585a398eb06871d2c3ca0d5f277ccb6f7e248
+cache/tracker3/files/meta.db-shm: -rw-r--r-- fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb -> -rw-r--r-- 74edfcaf1574014b7af92edb4439644031cba0c070c103dd51c04b1a6b4e90bb
+cache/tracker3/files/meta.db-wal: -rw-r--r-- e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 -> -rw-r--r-- c823598ca6ce055e6ad8150de473e55f75bc02915f26a1c0ad6cdf98b2fb48f8
+cache/tracker3/files/ontologies.gvdb: - -> -rw-rw-r-- 37b161110c89ba20fd8f9072eac6be1ea20136ed6345a9feab128cbbe6107f80
+config/DragShift: - -> drwxrwxr-x dir
+config/DragShift/DragShift.conf: - -> -rw-rw-r-- d3e29825aebeceeaa7840a98656eeb26988fdfad174403d3ddba9a687c4d0325
+config/autostart: - -> drwxrwxr-x dir
+data/applications: - -> drwxrwxr-x dir
+data/applications/mimeinfo.cache: - -> -rw-rw-r-- 4fea18b04d2fc6237fa76558b7e0e93345c4db47946d58b6be9b4b61cb5e505f
+data/gvfs-metadata/root-4ab6d1cf.log: -rw-rw-r-- 6f53458adbc0c028e98706a9dea25c3680362c305201d4a900104ad678601dc3 -> -rw-rw-r-- ad1c8cb10dc6d94e836705449df05ca8c971b82ceb517cf5090c36ee46c296f7
+data/icons: - -> drwxrwxr-x dir
+data/icons/hicolor: - -> drwxrwxr-x dir
+data/icons/hicolor/256x256: - -> drwxrwxr-x dir
+data/icons/hicolor/256x256/apps: - -> drwxrwxr-x dir
+home/.local/bin: - -> drwxrwxr-x dir
+state/DragShift: - -> drwxrwxr-x dir
+state/DragShift/log.txt: - -> -rw-rw-r-- 256c56be0359967569d672a674c07da542cc9e90ba825dfbf6bffa6399abe0f2

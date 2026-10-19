@@ -1,0 +1,228 @@
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  10.24kB
+Step 1/13 : FROM ubuntu:24.04
+ ---> 6277ab668b2a
+Step 2/13 : ARG UV_VERSION=0.11.2
+ ---> Using cache
+ ---> 4ea41555eb1d
+Step 3/13 : ARG WITH_LIBREOFFICE=0
+ ---> Using cache
+ ---> a69dbf8ef72a
+Step 4/13 : ENV DEBIAN_FRONTEND=noninteractive
+ ---> Using cache
+ ---> 378062be13b9
+Step 5/13 : RUN apt-get update  && apt-get install -y --no-install-recommends       gnome-shell mutter xwayland nautilus dbus dbus-x11       gnome-shell-extension-desktop-icons-ng gnome-shell-extension-ubuntu-dock       gnome-shell-extension-appindicator yaru-theme-gnome-shell       at-spi2-core gir1.2-atspi-2.0 python3-gi       libgl1-mesa-dri mesa-utils fonts-ubuntu fonts-noto-core libxcb-cursor0       dconf-cli x11-utils xdg-utils file ca-certificates curl       python3-venv libgl1 libegl1 libfontconfig1 libfreetype6 libglib2.0-0t64       libdbus-1-3 libx11-6 libxkbcommon0 libgssapi-krb5-2       libx11-xcb1 libxcb1 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0       libxcb-render0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 libxcb-sync1       libxcb-util1 libxcb-xfixes0 libxcb-xkb1 libxkbcommon-x11-0       libwayland-client0 libwayland-cursor0 libwayland-egl1  && if [ "$WITH_LIBREOFFICE" = 1 ]; then       apt-get install -y --no-install-recommends libreoffice-writer-nogui; fi  && rm -rf /var/lib/apt/lists/*
+ ---> Using cache
+ ---> 3ab7e5ab1285
+Step 6/13 : RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh"       | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh  && uv --version
+ ---> Using cache
+ ---> 3080bdb80999
+Step 7/13 : COPY requirements.txt /opt/requirements.txt
+ ---> Using cache
+ ---> 9c7e571b75bb
+Step 8/13 : RUN uv venv --python /usr/bin/python3 /opt/venv  && VIRTUAL_ENV=/opt/venv uv pip install --no-cache -r /opt/requirements.txt pytest
+ ---> Using cache
+ ---> eeab443c4524
+Step 9/13 : RUN mkdir -m 1777 /tmp/.X11-unix  && useradd --create-home --shell /bin/bash tester
+ ---> Using cache
+ ---> d3ca8e922ee1
+Step 10/13 : USER tester
+ ---> Using cache
+ ---> a7311c5c1e58
+Step 11/13 : WORKDIR /src
+ ---> Using cache
+ ---> 65aed119a8a2
+Step 12/13 : ENV PATH=/opt/venv/bin:$PATH     VIRTUAL_ENV=/opt/venv     PYTHONDONTWRITEBYTECODE=1     LANG=C.UTF-8
+ ---> Using cache
+ ---> 603826608b02
+Step 13/13 : CMD ["python", "-m", "pytest", "-p", "no:cacheprovider", "-m", "gnome", "tests/linux"]
+ ---> Using cache
+ ---> 2d6492b8181e
+Successfully built 2d6492b8181e
+Successfully tagged dragshift-gnome-test:i67
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0 -- /opt/venv/bin/python
+rootdir: /src
+collecting ... collected 330 items / 320 deselected / 10 selected
+
+tests/linux/test_uninstall.py::test_uninstall_quits_the_app_over_its_socket 
+$ install-linux.sh
+→ Installing from /src
+→ Installing DragShift 1.1.0 into /tmp/dragshift-session-0zoh_4__/data/dragshift
+→ Creating the Python environment with uv
+→ Installing Python packages (about 300 MB to download)
+→ Installing the launcher /tmp/dragshift-session-0zoh_4__/home/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+→ Installing the GNOME Shell extension dragshift@eteen12.github.io
+→ DragShift starts when you log in (/tmp/dragshift-session-0zoh_4__/config/autostart/dragshift.desktop)
+→ Checking that DragShift runs
+→ Starting DragShift (look for its icon in the top bar)
+✓ DragShift 1.1.0 is installed.
+  Log out and back in once so GNOME loads the DragShift extension.
+  Until then, Shift+drag can't open DragShift's menu.
+  The dragshift command works in new terminals after you log in again (~/.profile adds ~/.local/bin).
+  Then drag any file in Files or on the desktop and press Shift.
+(exit 0, 20 s)
+
+$ install-linux.sh --uninstall
+→ Quitting DragShift
+  turned the extension dragshift@eteen12.github.io off
+  removed /tmp/dragshift-session-0zoh_4__/data/gnome-shell/extensions/dragshift@eteen12.github.io
+  removed /tmp/dragshift-session-0zoh_4__/data/applications/io.github.eteen12.DragShift.desktop
+  removed /tmp/dragshift-session-0zoh_4__/data/icons/hicolor/256x256/apps/io.github.eteen12.DragShift.png
+  removed /tmp/dragshift-session-0zoh_4__/data/nautilus/scripts/DragShift…
+  removed /tmp/dragshift-session-0zoh_4__/home/.local/share/nautilus/scripts/DragShift…
+  removed /tmp/dragshift-session-0zoh_4__/config/autostart/dragshift.desktop
+  removed /tmp/dragshift-session-0zoh_4__/home/.local/bin/dragshift
+  removed /tmp/dragshift-session-0zoh_4__/data/dragshift/venv
+  removed /tmp/dragshift-session-0zoh_4__/data/dragshift/src
+  removed /tmp/dragshift-session-0zoh_4__/data/dragshift
+✓ DragShift is uninstalled.
+  Kept your settings and log: /tmp/dragshift-session-0zoh_4__/config/DragShift /tmp/dragshift-session-0zoh_4__/state/DragShift
+  To remove them too, run this again with --uninstall --purge.
+(exit 0, 0 s)
+
+$ install-linux.sh --uninstall
+✓ Nothing to remove: DragShift is not installed for this user.
+  Kept your settings and log: /tmp/dragshift-session-0zoh_4__/config/DragShift /tmp/dragshift-session-0zoh_4__/state/DragShift
+  To remove them too, run this again with --uninstall --purge.
+(exit 0, 0 s)
+
+$ install-linux.sh --no-start
+→ Installing from /src
+→ Installing DragShift 1.1.0 into /tmp/dragshift-session-0zoh_4__/data/dragshift
+→ Creating the Python environment with uv
+→ Installing Python packages (about 300 MB to download)
+→ Installing the launcher /tmp/dragshift-session-0zoh_4__/home/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+→ Installing the GNOME Shell extension dragshift@eteen12.github.io
+→ DragShift starts when you log in (/tmp/dragshift-session-0zoh_4__/config/autostart/dragshift.desktop)
+→ Checking that DragShift runs
+✓ DragShift 1.1.0 is installed.
+  Log out and back in once so GNOME loads the DragShift extension.
+  Until then, Shift+drag can't open DragShift's menu.
+  The dragshift command works in new terminals after you log in again (~/.profile adds ~/.local/bin).
+  Then drag any file in Files or on the desktop and press Shift.
+(exit 0, 3 s)
+PASSED
+tests/linux/test_uninstall.py::test_every_installed_file_is_gone_and_settings_and_log_are_kept PASSED
+tests/linux/test_uninstall.py::test_the_file_tree_has_nothing_of_dragshift_left 
+87 paths before the install, 162 after the uninstall; 82 differ:
+  cache/mesa_shader_cache/0a: - → drwx------ dir
+  cache/mesa_shader_cache/0a/87a047668364fef2d4435b05e093ea30287915: - → -rw-r--r-- c5635a1d493367ecd24458765c892b5f82dce15efe6db43f2875d30bd3c15990
+  cache/mesa_shader_cache/17: - → drwx------ dir
+  cache/mesa_shader_cache/17/397415979da0426189cca487d9fa0c3a44cf5c: - → -rw-r--r-- b5e20dc8d5f2eaec3373cd17fd625cd0f1de39be1bf2af9f5d64dc605533c64a
+  cache/mesa_shader_cache/42/f1a70f127ac871564d0d7094b96e220e13c618: - → -rw-r--r-- e38d0faa11d3da9c55a32c7554a64f3276ff1d12056f432633f15008fd99ebaf
+  cache/mesa_shader_cache/43: - → drwx------ dir
+  cache/mesa_shader_cache/43/da4acbfbc21db4fb6a41618416ebef6377cd19: - → -rw-r--r-- 429bc3d78dcdf256c7eb3c60614bc5714579eee33271728be5d6567ad87541a3
+  cache/mesa_shader_cache/4c: - → drwx------ dir
+  cache/mesa_shader_cache/4c/55f22650141cb27383aac954da6e81ee2ddb8f: - → -rw-r--r-- 10739979bf84eee2fabe525057302ae6e28c5645143a4949b8e62019204ef2d2
+  cache/mesa_shader_cache/57: - → drwx------ dir
+  cache/mesa_shader_cache/57/61e7c32d0795ce7f2522c15601643f66e57081: - → -rw-r--r-- 1bc9246899bf5823d45f359884ad9e0569f00239cc1e551efc32bb0de60c94fa
+  cache/mesa_shader_cache/72: - → drwx------ dir
+  cache/mesa_shader_cache/72/07d2f765ed9fa4cb1ce43120ce4159672cb791: - → -rw-r--r-- 0dff5d58ca0be2baf43d88f4a5e85a6ecfbe12fdf14132dd458258913ee24b75
+  cache/mesa_shader_cache/72/7b92229554f69848cf7e0d3a27cec60c9aca88: - → -rw-r--r-- 93fdd524dd6d9baac5742686f16f6ee692de0bc36696b688d04663249d5da0d3
+  cache/mesa_shader_cache/77: - → drwx------ dir
+  cache/mesa_shader_cache/77/05d84b4488a4b0a6bedfd2aafa286726e66977: - → -rw-r--r-- f510813c378acba498e72967a127008e7ae8a17dea55f368a0cac1fc2ed20112
+  cache/mesa_shader_cache/89: - → drwx------ dir
+  cache/mesa_shader_cache/89/425238efbd60326fc109831c163d5e0cca1cbf: - → -rw-r--r-- 2584f9d55a2c3d10fe7275763596731ccec88c0e355ea3e6eb7234a6ca00f599
+  cache/mesa_shader_cache/8d: - → drwx------ dir
+  cache/mesa_shader_cache/8d/62e5eba47058e40c4e4b6b1e1a5924eb3c598a: - → -rw-r--r-- 96de7240b9764e5492d846a0f4bb5ca0c5388f17c21fb4259ca06b3a91104baa
+  cache/mesa_shader_cache/9a: - → drwx------ dir
+  cache/mesa_shader_cache/9a/6441a78ca59731ed13483bf04d12cf6060c85b: - → -rw-r--r-- dfdb98d98a0748d651ab23bf321fc0ce69978a8b9f640f123aeea6c53fe8e1ac
+  cache/mesa_shader_cache/b8: - → drwx------ dir
+  cache/mesa_shader_cache/b8/f1e83cc2122ef94d552b8b31fc183ec1f78a6c: - → -rw-r--r-- 6e76bef56cac4ddfb083104e0e5af7d11c2f9b2f8cc629abc75cebe3e6a5e1c9
+  cache/mesa_shader_cache/ca: - → drwx------ dir
+  cache/mesa_shader_cache/ca/81d26b99167cfecf2b8b05fd599421dc7a04c0: - → -rw-r--r-- 653ae04cfcbfe060d9954013694fc652cc2f1c20ac0d1a5300852f79b5528e67
+  cache/mesa_shader_cache/d8: - → drwx------ dir
+  cache/mesa_shader_cache/d8/aef0a3cc4287270aaeb75d689c12d1c30c90f9: - → -rw-r--r-- 213fce4c78dd9762e51dc99b4b85657a52e3caf077ddcd75b56976c9c65f9f01
+  cache/mesa_shader_cache/e3: - → drwx------ dir
+  cache/mesa_shader_cache/e3/6151d8cce67795130544588c4c7a6faca11efc: - → -rw-r--r-- b91d3c849358edf539d532eed40453f8cb47d9b22dc7a6db43562213e12bbaea
+  cache/mesa_shader_cache/e3/b2204a8a670ca34b4fd8739386ba207a3b75b6: - → -rw-r--r-- 586786c123667645b518c3b666a4872bd2f67d2ebdcf3dea9d4064e3edc521c2
+  cache/mesa_shader_cache/f3: - → drwx------ dir
+  cache/mesa_shader_cache/f3/997f17116a6cdfff49ddc79e42b6872b91c2d5: - → -rw-r--r-- d3bacd51c1ed6781692ddc05fdcb698a1ad030494d3d960385713b56b477f36b
+  cache/mesa_shader_cache/index: -rw-r--r-- 24e5c082023c1b6a0fb1fd7474f599242a216c538ade844ddd566c48af5c51cf → -rw-r--r-- 9e38b5a67d56dc35113b7c17c9212dc1211b59f90f66c205d3066b552606b8dc
+  cache/tracker3: - → drwx------ dir
+  cache/tracker3/files: - → drwx------ dir
+  cache/tracker3/files/errors: - → drwx------ dir
+  cache/tracker3/files/first-index.txt: - → -rw-r--r-- 332b5ada10be1415024aa8aba4509f27154a3285b0c15e296f0264487229aa13
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Audio.db: - → -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Audio.db-shm: - → -rw-r--r-- f9fbaecb33368786d9b2a3937ed4ef4789e84e2fd830855e4c78a091ebd2ac00
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Audio.db-wal: - → -rw-r--r-- 3637374e33c61fbf00bebf5b75d3a65f911ac225449f02f20235a08b066740ef
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Documents.db: - → -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Documents.db-shm: - → -rw-r--r-- 1f3b93a63e0a80044aa81f0dc58a1ded2c0ea771c62f76e86a0088c2384a3f84
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Documents.db-wal: - → -rw-r--r-- 1bdecde68ea2cbe250fac934fe4b1fddfa7f024837254b8a3e45697525817ff3
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23FileSystem.db: - → -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23FileSystem.db-shm: - → -rw-r--r-- 90fbe397e44f42333fb6f0c32bea0bf46c752e1680227fea22b63a14233ee5e5
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23FileSystem.db-wal: - → -rw-r--r-- 60afd0d2fdad4c9176c15b998749b5bb227109246c55996aa993a40b0156ab31
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Pictures.db: - → -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Pictures.db-shm: - → -rw-r--r-- ee996b2b67437309e247cf53da485639d94aaab843639bcfdfa40b601e3343df
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Pictures.db-wal: - → -rw-r--r-- 8bb5c1c8164adbdc88ddb9ec292b0856194d7fc5d843ed8df271beec2bdfdae2
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Software.db: - → -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Software.db-shm: - → -rw-r--r-- 755197c76e4bdf442b2607796c42d5d833d4f6a260c3b87cabe7a7aea93c27be
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Software.db-wal: - → -rw-r--r-- 97d2cf33ef66fff9261f4b78d21a8187ca4f0b7989b17dcebab180f404bad094
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Video.db: - → -rw-r--r-- e3ba06536f7dbba337dee3c1c5f01b43660ce276abb54c5cee2d5defc5b970aa
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Video.db-shm: - → -rw-r--r-- 95e2ea7e243ae5aabd0623c6f092fef015735bac441ad5461ccc946c82219e3b
+  cache/tracker3/files/http%3A%2F%2Ftracker.api.gnome.org%2Fontology%2Fv3%2Ftracker%23Video.db-wal: - → -rw-r--r-- c95e08d512cdef824a454b21fce4da7dfe7950be6a9e8253077fb172979ff7da
+  cache/tracker3/files/last-crawl.txt: - → -rw-r--r-- ff830cee03f23eebdbdaa06b9bd9bef5e9730f5e576fb7399f3ae3401cac5892
+  cache/tracker3/files/meta.db: - → -rw-r--r-- 527c94eba0982fba383051a89e62247e42cd1a1637ac56a4f9ff403facf1ba41
+  cache/tracker3/files/meta.db-shm: - → -rw-r--r-- 4066a08c0cdcce183878a859f45f8b79af09496e0b2a233c60eb03d42d542c24
+  cache/tracker3/files/meta.db-wal: - → -rw-r--r-- e18f6942feffb218a53c11a96df7d31a893ba083f44b6d10dbb3b5558336c5f8
+  cache/tracker3/files/ontologies.gvdb: - → -rw-r--r-- 37b161110c89ba20fd8f9072eac6be1ea20136ed6345a9feab128cbbe6107f80
+  config/DragShift: - → drwxr-xr-x dir
+  config/DragShift/DragShift.conf: - → -rw-r--r-- d3e29825aebeceeaa7840a98656eeb26988fdfad174403d3ddba9a687c4d0325
+  config/autostart: - → drwxr-xr-x dir
+  config/dconf/user: -rw-r--r-- b5966687d6e681e546b7b7b1d5d7cc828f070267f3b156748cc179be19fad59f → -rw-r--r-- 247d987adee957b8edb87cbb507aaac93e8482730efb2a04b45b7a720709e178
+  config/nautilus: - → drwxr-xr-x dir
+  data/applications: - → drwxr-xr-x dir
+  data/applications/mimeinfo.cache: - → -rw-r--r-- 4fea18b04d2fc6237fa76558b7e0e93345c4db47946d58b6be9b4b61cb5e505f
+  data/gvfs-metadata: - → drwx------ dir
+  data/gvfs-metadata/root: - → -rw------- c8bcb00bd9385d3bf93956cd1097e39ae05a2ee6a7e9d12d8648a3a7b1d6bb15
+  data/gvfs-metadata/root-108519c3.log: - → -rw-r--r-- 903d2837e27863e1132d9a008b8c006ada923454878917ec0384791ac360c458
+  data/icons: - → drwxr-xr-x dir
+  data/icons/hicolor: - → drwxr-xr-x dir
+  data/icons/hicolor/256x256: - → drwxr-xr-x dir
+  data/icons/hicolor/256x256/apps: - → drwxr-xr-x dir
+  data/nautilus/tags/meta.db: -rw-r--r-- 527c94eba0982fba383051a89e62247e42cd1a1637ac56a4f9ff403facf1ba41 → -rw-r--r-- 02cb2267294147eecfe161ce5fec0f2a176581bc60c7ae346ce60bb9c299648c
+  data/nautilus/tags/meta.db-shm: -rw-r--r-- c5e0591dd0c7267e1fdbb65e3edfd370d72533d0e62ce8012693196c90e6242a → -
+  data/nautilus/tags/meta.db-wal: -rw-r--r-- 15e89afff8f7f74bf45f198b8a5bd96913083da7e3cfa662f847670c4132bab0 → -
+  data/nautilus/tracker2-migration-complete: - → -rw-r--r-- e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  home/.local/bin: - → drwxr-xr-x dir
+  state/DragShift: - → drwxr-xr-x dir
+  state/DragShift/log.txt: - → -rw-r--r-- ee3f604c12f864b393970fef5d101d927f20a0e0a6fe8a4eabdddba9f7d4de13
+PASSED
+tests/linux/test_uninstall.py::test_the_users_own_scripts_and_extensions_are_untouched PASSED
+tests/linux/test_uninstall.py::test_a_second_uninstall_has_nothing_to_remove PASSED
+tests/linux/test_uninstall.py::test_installing_again_works PASSED
+tests/linux/test_uninstall.py::test_nothing_outside_the_session_changed PASSED
+tests/linux/test_uninstall.py::test_uninstall_switches_a_loaded_extension_off 
+$ install-linux.sh --uninstall --purge
+→ Quitting DragShift
+  turned the extension dragshift@eteen12.github.io off
+  removed /tmp/dragshift-session-0zoh_4__/data/gnome-shell/extensions/dragshift@eteen12.github.io
+  removed /tmp/dragshift-session-0zoh_4__/data/applications/io.github.eteen12.DragShift.desktop
+  removed /tmp/dragshift-session-0zoh_4__/data/icons/hicolor/256x256/apps/io.github.eteen12.DragShift.png
+  removed /tmp/dragshift-session-0zoh_4__/data/nautilus/scripts/DragShift…
+  removed /tmp/dragshift-session-0zoh_4__/home/.local/share/nautilus/scripts/DragShift…
+  removed /tmp/dragshift-session-0zoh_4__/config/autostart/dragshift.desktop
+  removed /tmp/dragshift-session-0zoh_4__/home/.local/bin/dragshift
+  removed /tmp/dragshift-session-0zoh_4__/data/dragshift/venv
+  removed /tmp/dragshift-session-0zoh_4__/data/dragshift/src
+  removed /tmp/dragshift-session-0zoh_4__/data/dragshift
+  removed /tmp/dragshift-session-0zoh_4__/config/DragShift
+  removed /tmp/dragshift-session-0zoh_4__/state/DragShift
+✓ DragShift is uninstalled.
+  GNOME Shell has switched the extension off; it forgets it completely at your next login.
+(exit 0, 0 s)
+
+extension state after the uninstall, same login: INACTIVE
+PASSED
+tests/linux/test_uninstall.py::test_purge_removes_settings_and_log_too PASSED
+tests/linux/test_uninstall.py::test_after_logging_in_again_gnome_has_forgotten_it PASSED
+
+===================== 10 passed, 320 deselected in 36.51s ======================

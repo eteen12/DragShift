@@ -1,0 +1,18 @@
+$ install-linux.sh --uninstall --purge
+→ Quitting DragShift
+  turned the extension dragshift@eteen12.github.io off
+  removed /tmp/dragshift-session-jjaoe1f5/data/gnome-shell/extensions/dragshift@eteen12.github.io
+  removed /tmp/dragshift-session-jjaoe1f5/data/applications/io.github.eteen12.DragShift.desktop
+  removed /tmp/dragshift-session-jjaoe1f5/data/icons/hicolor/256x256/apps/io.github.eteen12.DragShift.png
+  removed /tmp/dragshift-session-jjaoe1f5/data/nautilus/scripts/DragShift…
+  removed /tmp/dragshift-session-jjaoe1f5/home/.local/share/nautilus/scripts/DragShift…
+  removed /tmp/dragshift-session-jjaoe1f5/config/autostart/dragshift.desktop
+  removed /tmp/dragshift-session-jjaoe1f5/home/.local/bin/dragshift
+  removed /tmp/dragshift-session-jjaoe1f5/data/dragshift/venv
+  removed /tmp/dragshift-session-jjaoe1f5/data/dragshift/src
+  removed /tmp/dragshift-session-jjaoe1f5/data/dragshift
+  removed /tmp/dragshift-session-jjaoe1f5/config/DragShift
+  removed /tmp/dragshift-session-jjaoe1f5/state/DragShift
+✓ DragShift is uninstalled.
+  GNOME Shell has switched the extension off; it forgets it completely at your next login.
+(exit 0, 0 s)

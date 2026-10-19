@@ -1,0 +1,5 @@
+$ install-linux.sh --uninstall
+✓ Nothing to remove: DragShift is not installed for this user.
+  Kept your settings and log: /tmp/dragshift-session-jjaoe1f5/config/DragShift /tmp/dragshift-session-jjaoe1f5/state/DragShift
+  To remove them too, run this again with --uninstall --purge.
+(exit 0, 0 s)
