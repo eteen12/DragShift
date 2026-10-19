@@ -10,6 +10,10 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QImage, QLinearGradient,
                            QPainter, QPainterPath, QPen, QPixmap, QRadialGradient)
 
+from .util import linux_module
+
+IS_LINUX = sys.platform.startswith("linux")
+
 # Rainbow stops for the iridescent rim (soft, pastel-ish so it reads as "glass").
 IRIDESCENT = ["#ff6b9d", "#ffb36b", "#ffe66b", "#7dffb0", "#6bd5ff", "#8a7bff", "#e07bff", "#ff6b9d"]
 
@@ -237,6 +241,9 @@ def exclude_from_capture(hwnd: int) -> bool:
     if sys.platform == "darwin":
         from . import platform_mac
         return platform_mac.OK      # macOS: we capture "below our window" instead
+    if IS_LINUX:
+        lx = linux_module()         # Linux: the shell extension captures without us
+        return lx is not None and lx.extension_available()
     if sys.platform != "win32" or os.environ.get("DRAGSHIFT_RECORDING"):
         return False
     try:
@@ -275,13 +282,19 @@ class _LiquidJob(QRunnable):
 
 def grab_screen(x: int, y: int, w: int, h: int, below_window: int = 0):
     """Screen pixels under a rect (logical coords) as a PIL image of size w×h.
-    macOS: native capture that leaves out the drag picture (and `below_window` and above)."""
+    macOS: native capture that leaves out the drag picture (and `below_window` and above).
+    Linux: the shell extension's capture when available, else Qt's grab as before."""
     if sys.platform == "darwin":
         from . import platform_mac
         if platform_mac.OK:
             im = platform_mac.capture(x, y, w, h, below_window)
             if im is not None:
                 return im
+    elif IS_LINUX:
+        lx = linux_module()
+        im = lx.capture(x, y, w, h, exclude_self=bool(below_window)) if lx is not None else None
+        if im is not None:
+            return im
     from PySide6.QtCore import QPoint
     from PySide6.QtGui import QGuiApplication
     scr = QGuiApplication.screenAt(QPoint(x + w // 2, y + h // 2)) or QGuiApplication.primaryScreen()
@@ -317,6 +330,8 @@ class LiquidBacking(QObject):
         if sys.platform == "darwin" and self.w.isVisible():
             from . import platform_mac
             below = platform_mac.window_number(self.w)
+        elif IS_LINUX and self.w.isVisible():
+            below = 1   # Linux: any non-zero asks the extension to leave our windows out
         pil = grab_screen(rect.x(), rect.y(), rect.width(), rect.height(), below)
         if pil is None:
             return

@@ -8,11 +8,12 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QGridLayout, QHBoxLayout, Q
                                QPushButton, QSlider, QVBoxLayout)
 
 from . import __version__
-from .util import CONFIG
+from .util import CONFIG, linux_module
 from .window import GlassWindow
 
 IS_WIN = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
 APP = "DragShift"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -50,7 +51,7 @@ class Settings:
             CONFIG[k] = self.get(k)
 
 
-# ---------------------------------------------------------------- autostart (Windows)
+# ---------------------------------------------------------------- autostart
 def launch_command() -> str:
     if getattr(sys, "frozen", False):
         return f'"{sys.executable}" --quiet'
@@ -61,6 +62,9 @@ def autostart_enabled() -> bool:
     if IS_MAC:
         from . import platform_mac
         return platform_mac.autostart_enabled()
+    if IS_LINUX:
+        lx = linux_module()
+        return lx is not None and lx.autostart_enabled()
     if not IS_WIN:
         return False
     import winreg
@@ -76,6 +80,11 @@ def set_autostart(on: bool):
     if IS_MAC:
         from . import platform_mac
         platform_mac.set_autostart(on)
+        return
+    if IS_LINUX:
+        lx = linux_module()
+        if lx is not None:
+            lx.set_autostart(on)
         return
     if not IS_WIN:
         return

@@ -26,6 +26,7 @@ TIP_URL = "https://cash.app/$AtikaKadesha"
 VERSION = __version__
 IS_WIN = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
 from .handoff import ipc_name
 IPC_NAME = ipc_name()
 

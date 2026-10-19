@@ -17,6 +17,7 @@ from PySide6.QtGui import (QColor, QCursor, QFont, QGuiApplication, QImage, QPai
 from PySide6.QtWidgets import QWidget
 
 from . import glass
+from .util import linux_module
 
 
 @dataclass
@@ -28,6 +29,7 @@ class Item:
     hint: str = ""
 
 
+IS_LINUX = sys.platform.startswith("linux")
 SIZE = 400          # window size (room for shadow + hover pop)
 R_OUT = 158         # outer radius of petals
 R_IN = 60           # inner radius of petals
@@ -84,6 +86,15 @@ class _RenderJob(QRunnable):
         except Exception:  # pragma: no cover - fall back to the painted glass
             import traceback
             traceback.print_exc()
+
+
+def _linux_backdrop(x: int, y: int):
+    """Linux: what's under the menu rect from platform_linux (screen, else wallpaper), or None."""
+    lx = linux_module()
+    if lx is None:
+        return None
+    im = lx.capture(x, y, SIZE, SIZE)
+    return im if im is not None else lx.wallpaper_crop(x, y, SIZE, SIZE)
 
 
 class RadialMenu(QWidget):
@@ -154,6 +165,13 @@ class RadialMenu(QWidget):
                 if self.got_drag or paths is None:
                     # belt and braces: Finder's drag picture (icon + name label) sits on the
                     # cursor; erase that area — it ends up under the hub, blurred anyway
+                    cx, cy = pos.x() - tl.x(), pos.y() - tl.y()
+                    raw = glass.inpaint_rects(raw, [(cx - 70, cy - 64, cx + 70, cy + 64)])
+                shot = QPixmap.fromImage(glass.qimage_from_pil(raw))
+            elif IS_LINUX and (raw := _linux_backdrop(tl.x(), tl.y())) is not None:
+                # Linux: the shell extension's capture, else the wallpaper under the menu;
+                # with neither, Qt's grab below as before
+                if self.got_drag or paths is None:
                     cx, cy = pos.x() - tl.x(), pos.y() - tl.y()
                     raw = glass.inpaint_rects(raw, [(cx - 70, cy - 64, cx + 70, cy + 64)])
                 shot = QPixmap.fromImage(glass.qimage_from_pil(raw))
