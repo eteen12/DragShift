@@ -66,8 +66,8 @@ run inside the session, and `gnome_session.log_path` is the shell's log.
 `Session(extensions=[dir])` installs and enables extra extensions.
 
 The session never touches your real desktop:
-- It uses its own HOME, XDG directories, `XDG_RUNTIME_DIR` (`/tmp/dsr.*`), session bus
-  and an empty private system bus.
+- It uses its own HOME, XDG directories, `TMPDIR`, `XDG_RUNTIME_DIR` (`/tmp/dsr.*`),
+  session bus and an empty private system bus.
 - It runs a private copy of DING, because DING kills every other DING of the same user
   when it starts.
 - Teardown kills every process that carries the session's runtime dir, then deletes the

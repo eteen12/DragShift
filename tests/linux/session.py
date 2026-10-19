@@ -7,6 +7,8 @@ touched:
 
 - The child environment is built from a short whitelist, so the real DISPLAY,
   WAYLAND_DISPLAY, DBUS_SESSION_BUS_ADDRESS, XAUTHORITY and SESSION_MANAGER never leak in.
+- HOME, the XDG directories and TMPDIR are temporary, so apps in the session never see
+  the real desktop's files or /tmp sockets.
 - The session gets its own (empty) system bus by default, so the shell cannot register a
   geoclue agent, take logind inhibitors, set the lock hint of the real login session or
   start system services. `XDG_SESSION_ID` points at a session that does not exist, for
@@ -379,7 +381,10 @@ class Session:
 
         dirs = {k: self.root / sub for k, sub in (
             ("HOME", "home"), ("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"),
-            ("XDG_STATE_HOME", "state"), ("XDG_CACHE_HOME", "cache"))}
+            ("XDG_STATE_HOME", "state"), ("XDG_CACHE_HOME", "cache"),
+            # Own TMPDIR: an app in the session must never reach the real desktop's
+            # /tmp sockets (e.g. DragShift's QLocalServer /tmp/DragShift-<user>).
+            ("TMPDIR", "tmp"))}
         for d in dirs.values():
             d.mkdir()
         ubuntu = UBUNTU_MODE.exists()

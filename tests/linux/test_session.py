@@ -91,8 +91,14 @@ def test_real_desktop_untouched(gnome_session):
     assert env["WAYLAND_DISPLAY"] == s.wayland_display != REAL_ENV["WAYLAND_DISPLAY"]
     assert env["XDG_RUNTIME_DIR"] == str(s.runtime_dir) != REAL_ENV["XDG_RUNTIME_DIR"]
     assert env["HOME"].startswith(str(s.root))
-    for k in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"):
+    for k in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
+              "TMPDIR"):
         assert env[k].startswith(str(s.root))
+    # An app in the session gets the private TMPDIR, so e.g. DragShift's QLocalServer
+    # socket can never collide with the real desktop's /tmp/DragShift-<user>.
+    r = s.run(["sh", "-c", 'echo "$TMPDIR"; mktemp'], check=True)
+    tmpdir, made = r.stdout.split()
+    assert tmpdir == f"{s.root}/tmp" and made.startswith(tmpdir + "/")
     assert env["DBUS_SYSTEM_BUS_ADDRESS"].startswith(f"unix:path={s.runtime_dir}/")
 
 

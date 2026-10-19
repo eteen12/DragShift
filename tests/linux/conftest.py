@@ -15,7 +15,8 @@ else:
 
 # The real desktop's display variables as seen before any session started.
 REAL_ENV = {k: os.environ.get(k) for k in
-            ("WAYLAND_DISPLAY", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR")}
+            ("WAYLAND_DISPLAY", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR",
+             "TMPDIR")}
 
 
 def require_session_tools():
