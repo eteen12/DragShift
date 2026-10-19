@@ -2,8 +2,8 @@
 // client, which can neither place nor raise its windows). Serves PlaceWindow in dbus.xml.
 //
 // A rule says: the caller's window titled T goes with its frame's top-left at (x, y).
-// Rules are kept per caller pid (asked from the bus, so an app can only move its own
-// windows) and dropped when the caller leaves the bus. A rule is applied
+// Rules are kept per caller pid (asked from the bus by caller.js, so an app can only move
+// its own windows) and dropped when the caller leaves the bus. A rule is applied
 // - at once to a mapped window of that pid and title (e.g. a toast sliding up), and
 // - to a new window of that pid and title in its `shown` handler, which runs after
 //   Mutter's own placement but before the window's first frame, so it never shows
@@ -14,9 +14,6 @@
 // back to the window that had it: Mutter focuses a newly mapped Wayland window and the
 // target of a drop, and DragShift's menu and toasts must never keep the focus.
 
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 // Most titles one caller may keep rules for (the menu plus four toasts need five).
@@ -25,7 +22,7 @@ const MAX_RULES = 32;
 export class WindowPlacer {
     constructor() {
         this._rules = new Map();      // pid -> Map(title -> [x, y])
-        this._callers = new Map();    // unique bus name -> {pid, watchId}
+        this._senders = new Map();    // unique bus name that placed windows -> its pid
         this._windows = new Map();    // window of a caller -> {placed, pending, ids}
         this._lastFocus = null;       // last focused window that is not one of ours
         this._createdId = global.display.connect('window-created',
@@ -40,78 +37,50 @@ export class WindowPlacer {
         global.display.disconnect(this._focusId);
         for (const [window, {ids}] of this._windows)
             ids.forEach(id => window.disconnect(id));
-        for (const {watchId} of this._callers.values())
-            Gio.bus_unwatch_name(watchId);
         this._windows.clear();
-        this._callers.clear();
+        this._senders.clear();
         this._rules.clear();
         this._lastFocus = null;
     }
 
-    // PlaceWindow(title, x, y) from `sender`; reply(placedNow) or fail(error).
-    place(sender, title, x, y, reply, fail) {
-        this._pidOf(sender, pid => {
-            let rules = this._rules.get(pid);
-            if (!rules) {
-                rules = new Map();
-                this._rules.set(pid, rules);
-            }
-            rules.delete(title);
-            if (rules.size >= MAX_RULES)
-                rules.delete(rules.keys().next().value);
-            rules.set(title, [x, y]);
-            let placed = false;
-            for (const actor of global.get_window_actors()) {
-                const window = actor.get_meta_window();
-                // Only windows already on screen: moving one before it has been shown is
-                // what crashes Mutter (see the top of this file). One that is still on its
-                // way picks the rule up in its `shown` handler.
-                if (window.get_pid() !== pid || window.get_title() !== title ||
-                    !actor.is_mapped() || this._windows.get(window)?.pending)
-                    continue;
-                this._track(window).placed = true;
-                this._apply(window, x, y);
-                placed = true;
-            }
-            reply(placed);
-        }, fail);
-    }
-
-    _pidOf(sender, done, fail) {
-        const known = this._callers.get(sender);
-        if (known) {
-            done(known.pid);
-            return;
+    // PlaceWindow(title, x, y) from bus name `sender` of process `pid` (both from the bus,
+    // caller.js); whether a mapped window moved now.
+    place(sender, pid, title, x, y) {
+        this._senders.set(sender, pid);
+        let rules = this._rules.get(pid);
+        if (!rules) {
+            rules = new Map();
+            this._rules.set(pid, rules);
         }
-        Gio.DBus.session.call('org.freedesktop.DBus', '/org/freedesktop/DBus',
-            'org.freedesktop.DBus', 'GetConnectionUnixProcessID',
-            new GLib.Variant('(s)', [sender]), new GLib.VariantType('(u)'),
-            Gio.DBusCallFlags.NONE, 1000, null, (conn, res) => {
-                let pid;
-                try {
-                    [pid] = conn.call_finish(res).deepUnpack();
-                } catch (e) {
-                    fail(e);
-                    return;
-                }
-                if (!this._callers.has(sender)) {
-                    const watchId = Gio.bus_watch_name_on_connection(Gio.DBus.session,
-                        sender, Gio.BusNameWatcherFlags.NONE, null,
-                        () => this._forget(sender));
-                    this._callers.set(sender, {pid, watchId});
-                }
-                done(pid);
-            });
+        rules.delete(title);
+        if (rules.size >= MAX_RULES)
+            rules.delete(rules.keys().next().value);
+        rules.set(title, [x, y]);
+        let placed = false;
+        for (const actor of global.get_window_actors()) {
+            const window = actor.get_meta_window();
+            // Only windows already on screen: moving one before it has been shown is
+            // what crashes Mutter (see the top of this file). One that is still on its
+            // way picks the rule up in its `shown` handler.
+            if (window.get_pid() !== pid || window.get_title() !== title ||
+                !actor.is_mapped() || this._windows.get(window)?.pending)
+                continue;
+            this._track(window).placed = true;
+            this._apply(window, x, y);
+            placed = true;
+        }
+        return placed;
     }
 
-    _forget(sender) {
-        const caller = this._callers.get(sender);
-        if (!caller)
+    // `sender` left the bus (Callers.onVanished): drop its pid's rules unless another
+    // connection of that process placed windows too.
+    forget(sender) {
+        const pid = this._senders.get(sender);
+        if (pid === undefined)
             return;
-        Gio.bus_unwatch_name(caller.watchId);
-        this._callers.delete(sender);
-        if (![...this._callers.values()].some(c => c.pid === caller.pid))
-            this._rules.delete(caller.pid);
+        this._senders.delete(sender);
+        if (![...this._senders.values()].includes(pid))
+            this._rules.delete(pid);
     }
 
     // Book-keeping for a window of a caller: its signal ids, whether a rule placed it and

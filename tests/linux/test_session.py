@@ -14,9 +14,10 @@ import pytest
 
 from tests.linux.conftest import REAL_ENV, require_session_tools
 from tests.linux import session as session_mod
-from tests.linux.session import (MARKER, SYSTEM_EXTENSIONS, UBUNTU_DEFAULT_EXTENSIONS,
-                                 UBUNTU_DING_SETTINGS, Session, SessionError,
-                                 _pids_with_runtime_dir, reap_stale_sessions, ubuntu_mode)
+from tests.linux.session import (MARKER, STARTED_MESSAGE, SYSTEM_EXTENSIONS,
+                                 UBUNTU_DEFAULT_EXTENSIONS, UBUNTU_DING_SETTINGS, Session,
+                                 SessionError, _pids_with_runtime_dir, reap_stale_sessions,
+                                 ubuntu_mode)
 
 ROOT = Path(__file__).resolve().parents[2]
 SYSTEM_DING = "gjs /usr/share/gnome-shell/extensions/ding@rastersoft.com/app/ding.js"
@@ -200,6 +201,39 @@ def test_caller_extension_is_installed_and_enabled(tmp_path):
         info = _wait_for(lambda: "ACTIVE" in (r := s.run(
             ["gnome-extensions", "info", uuid])).stdout and r.stdout)
         assert info and f"Path: {s.root}/data/gnome-shell/extensions/{uuid}" in info, info
+
+
+@gnome
+def test_session_is_up_only_after_startup_complete(monkeypatch):
+    """#106: GNOME Shell answers on D-Bus before its startup animation, and a monitor
+    change in that gap wedges its startup for good (no 'startup-complete', the overview
+    and its cover pane stay up, the helper never gets ready). So start() returns only
+    after the shell logged its startup-complete, and the scale is applied after that."""
+    require_session_tools()
+    seen = []
+    set_scale = Session.set_scale
+
+    def spy(self, scale):
+        seen.append(STARTED_MESSAGE in self.log_path.read_text(errors="replace"))
+        set_scale(self, scale)
+
+    monkeypatch.setattr(Session, "set_scale", spy)
+    with Session(size=(3200, 1800), scale=2) as s:
+        assert STARTED_MESSAGE in s.log_path.read_text(errors="replace")
+        assert seen == [True], "set_scale ran before the shell finished starting up"
+        assert s.scale == 2
+
+
+def test_startup_wait_reads_the_log_incrementally(tmp_path):
+    """_started_up only scans what it has not seen, and finds a line split across reads."""
+    s = Session()
+    s.log_path = tmp_path / "gnome-shell.log"
+    s.log_path.write_bytes(b"x" * 5000 + b"\nGNOME Shell sta")
+    assert not s._started_up()
+    assert s._log_scanned == 5001
+    with open(s.log_path, "ab") as f:
+        f.write(b"rted at Mon Oct 19 2026\n")
+    assert s._started_up()
 
 
 @gnome

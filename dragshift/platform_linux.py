@@ -43,12 +43,19 @@ def _call(method: str, signature: str | None = None, *args, timeout: float = DBU
     """Call `method` on the extension and return the reply's arguments as a tuple, or None
     when it can't answer (no session bus, extension missing or disabled, error, timeout).
     Never raises. One connection is kept open and reopened after a failure."""
+    return _request(method, signature, *args, timeout=timeout)[0]
+
+
+def _request(method: str, signature: str | None = None, *args,
+             timeout: float = DBUS_TIMEOUT) -> tuple[tuple | None, str | None]:
+    """_call's work: (reply arguments, None), or (None, D-Bus error name) for an error
+    reply, or (None, None) when there was no reply at all."""
     global _bus
     try:
-        from jeepney import DBusAddress, MessageType, new_method_call
+        from jeepney import DBusAddress, HeaderFields, MessageType, new_method_call
         from jeepney.io.blocking import open_dbus_connection
     except ImportError:
-        return None
+        return None, None
     with _bus_lock:
         try:
             if _bus is None:
@@ -63,10 +70,10 @@ def _call(method: str, signature: str | None = None, *args, timeout: float = DBU
                 except Exception:
                     pass
                 _bus = None
-            return None
+            return None, None
     if reply.header.message_type != MessageType.method_return:
-        return None
-    return reply.body
+        return None, reply.header.fields.get(HeaderFields.error_name)
+    return reply.body, None
 
 
 def extension_version() -> str | None:
@@ -74,6 +81,17 @@ def extension_version() -> str | None:
     extension does not answer."""
     body = _call("Version")
     return body[0] if body and isinstance(body[0], str) else None
+
+
+ACCESS_DENIED = "org.freedesktop.DBus.Error.AccessDenied"
+
+
+def extension_refuses_us() -> bool:
+    """True when the extension answers but refuses this process: every method except
+    Version answers only the DragShift app, recognised by its command line (`python -m
+    dragshift`, `.../dragshift/__main__.py` or the ~/.local/bin/dragshift launcher), so a
+    DragShift started some other way (e.g. `python run.py`) gets no pointer or capture."""
+    return _request("GetPointer")[1] == ACCESS_DENIED
 
 
 # ---------------------------------------------------------------- input state

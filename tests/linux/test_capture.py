@@ -15,10 +15,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from jeepney.io.blocking import open_dbus_connection
 from PIL import Image, ImageChops, ImageStat
 
 from dragshift import glass, platform_linux as lx
-from tests.linux import inject
+from tests.linux import caller, inject
 from tests.linux.conftest import require_session_tools
 from tests.linux.files import Files
 from tests.linux.probe_window import ProbeWindow
@@ -243,10 +244,14 @@ def _helper_area(s, shell, x, y, w, h, name) -> Image.Image:
         return im.convert("RGB")
 
 
-def _gdbus_capture(s, *rect):
-    return s.run(["gdbus", "call", "--session", "--timeout", "5", "--dest", lx.BUS_NAME,
-                  "--object-path", lx.OBJECT_PATH, "--method", f"{lx.INTERFACE}.CaptureArea",
-                  "--", *map(str, rect)])
+def _capture_reply(s, *rect):
+    """CaptureArea from this process on the session's bus: ("ok", body) or (error name,
+    message). (Not gdbus: the extension refuses it, #93.)"""
+    conn = open_dbus_connection(bus=s.bus_address)
+    try:
+        return caller.call(conn, "CaptureArea", "iiii", rect)
+    finally:
+        conn.close()
 
 
 @gnome
@@ -288,11 +293,11 @@ def test_rect_partly_off_screen_is_clamped_and_padded(cap_session, shell, client
 def test_bad_rects_are_dbus_errors(cap_session, shell, client):
     s = cap_session
     for rect in ((0, 0, 0, 100), (0, 0, 100, -5), (SIZE[0] + 10, 0, 50, 50), (-200, -200, 100, 100)):
-        r = _gdbus_capture(s, *rect)
-        assert r.returncode != 0 and "InvalidArgs" in r.stderr, (rect, r.stderr)
+        status, body = _capture_reply(s, *rect)
+        assert status == "org.freedesktop.DBus.Error.InvalidArgs", (rect, status, body)
         assert lx.capture(*rect) is None
-    r = _gdbus_capture(s, 10, 10, 4, 3)
-    assert r.returncode == 0 and r.stdout.startswith("(10, 10, 4, 3, ["), r.stdout
+    status, body = _capture_reply(s, 10, 10, 4, 3)
+    assert status == "ok" and body[:4] == (10, 10, 4, 3) and len(body[4]) == 1, body
 
 
 @gnome

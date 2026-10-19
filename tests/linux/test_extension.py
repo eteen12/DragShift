@@ -57,10 +57,10 @@ def built_dir(built_zip, tmp_path_factory) -> Path:
 # ------------------------------------------------------------------ build, no shell
 def test_build_zip_contents(built_zip):
     with zipfile.ZipFile(built_zip) as z:
-        assert sorted(z.namelist()) == ["dbus.xml", "extension.js", "metadata.json",
-                                        "placement.js"]
+        assert sorted(z.namelist()) == ["caller.js", "dbus.xml", "extension.js",
+                                        "metadata.json", "placement.js"]
         meta = json.loads(z.read("metadata.json"))
-        for name in ("extension.js", "placement.js", "dbus.xml"):
+        for name in ("extension.js", "caller.js", "placement.js", "dbus.xml"):
             assert z.read(name) == (SRC / name).read_bytes(), name
     assert meta == {**json.loads((SRC / "metadata.json").read_text()),
                     "version-name": __version__}
@@ -169,14 +169,19 @@ def test_client_on_a_bus_without_the_extension_and_with_a_hung_one(tmp_path):
 
 def test_app_warns_on_version_mismatch(monkeypatch, capsys):
     from dragshift import app
-    for found, expect in (("0.9.0", "warning: the GNOME Shell extension is from DragShift "
-                                    f"0.9.0, the app is {__version__}"),
-                          (None, "GNOME Shell extension not available"),
-                          (__version__, "")):
+    refused = "the GNOME Shell extension only answers the DragShift app"
+    for found, refuses, expect in (
+            ("0.9.0", False, "warning: the GNOME Shell extension is from DragShift "
+                             f"0.9.0, the app is {__version__}"),
+            (None, True, "GNOME Shell extension not available"),
+            (__version__, False, ""),
+            (__version__, True, refused)):     # #93: e.g. started as `python run.py`
         monkeypatch.setattr(lx, "extension_version", lambda v=found: v)
+        monkeypatch.setattr(lx, "extension_refuses_us", lambda r=refuses: r)
         app.check_extension_version().join(5)
         err = capsys.readouterr().err
         assert (expect in err) if expect else err == "", (found, err)
+        assert (refused in err) == (refuses and found is not None), err
 
 
 # ------------------------------------------------------------------ in the session
