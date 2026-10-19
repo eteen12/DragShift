@@ -235,17 +235,18 @@ CAPTURE_TIMEOUT = 0.5   # seconds; a 400×400 capture takes 10-20 ms, a busy she
 def capture(x: int, y: int, w: int, h: int, exclude_self: bool = False):
     """Screen rect (logical px) as a PIL RGB image of exactly w×h, or None. The drag
     picture (Mutter's drag actor, or an X11 app's DND window) is ALWAYS left out, and so
-    is the cursor. exclude_self
-    additionally leaves DragShift's own windows out, for live refresh behind toasts and
-    tool windows.
+    is the cursor. exclude_self additionally leaves DragShift's own windows out (every
+    window of this process; the extension knows us by our bus connection), for live
+    refresh behind toasts and tool windows.
 
     The extension clamps the rect to the screen; the part that was off it is filled
     with the nearest edge pixels. A HiDPI capture is scaled back to logical size.
-    None when the extension doesn't answer (missing, disabled, timeout) and, until the
-    extension can leave our own windows out (#28), when exclude_self is set."""
-    if w <= 0 or h <= 0 or exclude_self:
+    None when the extension doesn't answer (missing, disabled, timeout, or too old for
+    exclude_self)."""
+    if w <= 0 or h <= 0:
         return None
-    body = _call("CaptureArea", "iiii", x, y, w, h, timeout=CAPTURE_TIMEOUT)
+    method = "CaptureAreaExcludingCaller" if exclude_self else "CaptureArea"
+    body = _call(method, "iiii", x, y, w, h, timeout=CAPTURE_TIMEOUT)
     if not body or len(body) != 5:
         return None
     ax, ay, aw, ah, strips = body

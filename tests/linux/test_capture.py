@@ -139,13 +139,6 @@ def test_nothing_to_capture_gives_none_without_a_call(fake):
     assert fake.calls == []
 
 
-def test_exclude_self_gives_none_until_the_extension_can_leave_our_windows_out(fake):
-    """Own-window exclusion is #28. Until then a capture would contain the window that
-    asks, so the caller must fall back (grab_screen: the wallpaper)."""
-    assert lx.capture(0, 0, 100, 100, exclude_self=True) is None
-    assert fake.calls == []
-
-
 def test_failed_or_garbled_reply_gives_none(fake):
     fake.reply = None
     assert lx.capture(5000, 5000, 10, 10) is None          # off the stage: D-Bus error
