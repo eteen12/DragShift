@@ -10,5 +10,14 @@
     <method name="Version">
       <arg name="version" type="s" direction="out"/>
     </method>
+    <!-- Global pointer position in stage (logical) pixels and the Clutter.ModifierType
+         mask: SHIFT 1<<0, CONTROL 1<<2, MOD1 (Alt) 1<<3, BUTTON1 1<<8; other bits
+         (Num Lock, Super, ...) are passed through for the app to ignore. Polled by the
+         app's trigger every 15 ms, so it does nothing but read global.get_pointer(). -->
+    <method name="GetPointer">
+      <arg name="x" type="i" direction="out"/>
+      <arg name="y" type="i" direction="out"/>
+      <arg name="mask" type="u" direction="out"/>
+    </method>
   </interface>
 </node>

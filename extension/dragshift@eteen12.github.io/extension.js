@@ -19,6 +19,11 @@ class DragShiftService {
     Version() {
         return this._version;
     }
+
+    GetPointer() {
+        const [x, y, mask] = global.get_pointer();
+        return [x, y, mask];
+    }
 }
 
 export default class DragShiftExtension extends Extension {
