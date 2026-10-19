@@ -470,6 +470,35 @@ uv run pytest tests/test_click_mode.py                        # offscreen, exten
 uv run pytest -s tests/linux/test_click_mode.py               # real app, scale 1 and 2
 ```
 
+### Drops onto the menu
+
+A Shift+drag from Files or the desktop opens the menu under the pointer. The file then
+enters it, and the drop on a petal runs that action (`activated` → `run_item`). The
+result is written next to the original (#35).
+
+- **Paths.** They are read from `text/uri-list` when the drag enters, because the
+  desktop's drop can arrive without a payload. `QUrl.toLocalFile` decodes the
+  percent-encoding, so names with spaces, `#`, `%` or non-ASCII letters arrive intact.
+  URIs that are not local files (`sftp://`, `smb://`, `https://`) are ignored. A drag
+  that has only those is refused.
+- **Copy, never Move.** The source app proposes Copy or Move. Files proposed
+  `MoveAction` in about half of the measured Shift+drags, and the desktop proposed
+  `CopyAction`. Both offer Copy, and the menu answers `CopyAction` on enter, move and
+  drop, so the original stays where it is, unchanged. On Linux the drop is logged as
+  `menu: dropped N file(s) on <petal> (<ring>), proposed …, answered CopyAction`.
+- **Beside the petals** (the corners, the hub) the drop is refused and the menu closes.
+  The same happens for a file type that has no petals. Nothing runs.
+- **Rings.** A Shift tap flips the ring through the watcher (`pointer_state()`), since
+  Qt never sees Shift during a drag. Resting on the hub for 420 ms flips it too, but only
+  after the pointer has moved onto a petal. On GNOME the menu is clamped to the work
+  area, and desktop icons sit at the right edge, so the file often enters on a petal.
+  That petal does not count as a visit.
+
+```sh
+uv run pytest tests/test_menu_drop.py                         # offscreen, synthetic drops
+uv run pytest -s tests/linux/test_menu_drop.py                # real drags from Files and the desktop
+```
+
 ### Screen capture (`CaptureArea`)
 
 `platform_linux.capture(x, y, w, h)` returns the screen under a rect as a PIL RGB image of
