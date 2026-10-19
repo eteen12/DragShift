@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import sys
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable
 
@@ -139,6 +140,9 @@ class RadialMenu(QWidget):
         self.is_light = False
         self._serial = 0
         self.got_drag = False
+        # Linux (#32): when the file drag last left the menu (time.monotonic()), None while
+        # it is over it. See drag_cancelled_since().
+        self.drag_cancelled_at: float | None = None
         self.hub_armed = False
         self.click_mode = False  # opened from tray/menu instead of a drag
         self._t = 1.0            # pop-in animation 0..1
@@ -222,6 +226,7 @@ class RadialMenu(QWidget):
         self.move(tl)
         self.hover = -1
         self.got_drag = False
+        self.drag_cancelled_at = None
         self.hub_armed = False  # drags start on the hub; don't flip until they leave it
         self.click_mode = paths is not None
         if paths is not None:
@@ -346,6 +351,17 @@ class RadialMenu(QWidget):
             self.hub_timer.stop()
             self.dismissed.emit()
 
+    def drag_cancelled_since(self, pos: QPoint) -> float | None:
+        """Linux (#32): when the file drag left the menu, if the pointer (`pos`, global) is
+        still over the menu; else None. Escape during a drag never reaches DragShift: Mutter
+        takes it and cancels the drag, and all the menu sees is a dragLeave with the button
+        still down and the pointer still on it (#24). A drag carried out of the menu leaves
+        with the pointer outside, and stays open until the button goes up, as on Windows.
+        The watcher reads this and waits a grace period for a drop or a re-entry."""
+        if self.drag_cancelled_at is None or not QRect(self.pos(), self.size()).contains(pos):
+            return None
+        return self.drag_cancelled_at
+
     def hideEvent(self, e):
         self.frame.stop()
         if IS_LINUX:
@@ -466,6 +482,7 @@ class RadialMenu(QWidget):
         return [u.toLocalFile() for u in md.urls() if u.isLocalFile() and u.toLocalFile()]
 
     def dragEnterEvent(self, e):
+        self.drag_cancelled_at = None
         paths = self._local_paths(e.mimeData())
         if not paths:
             e.ignore()
@@ -489,6 +506,8 @@ class RadialMenu(QWidget):
 
     def dragLeaveEvent(self, e):
         self._set_hover(-1)
+        if IS_LINUX and self.got_drag:
+            self.drag_cancelled_at = time.monotonic()   # a cancel, or carried out (#32)
 
     def dropEvent(self, e):
         idx = self.hit(e.position())
