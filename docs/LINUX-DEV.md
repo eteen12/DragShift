@@ -56,3 +56,21 @@ XDG_STATE_HOME=$(mktemp -d) QT_QPA_PLATFORM=offscreen .venv/bin/python -m dragsh
 It prints `SELFTEST OK` and exits 0. On Linux the app logs to `$XDG_STATE_HOME/DragShift/log.txt`
 (default `~/.local/state/DragShift/log.txt`); a log over 1 MB is moved to `log.old.txt` at start.
 The temporary `XDG_STATE_HOME` above keeps the self-test's log out of your real one.
+
+## DOCX → PDF and LibreOffice
+
+On Linux, DOCX → PDF uses LibreOffice when it is installed (`soffice` or `libreoffice` on
+`PATH`, the snap at `/snap/bin/libreoffice`, or the flatpak `org.libreoffice.LibreOffice`) and
+falls back to the built-in renderer otherwise. Each conversion runs headless with a throwaway
+profile and a copy of the source, in `~/snap/<snap>/common/DragShift/` for the snap (it can't
+use `/tmp` or hidden folders such as `~/.cache`) and in `$XDG_CACHE_HOME/DragShift/soffice/`
+otherwise. The per-conversion folder is removed afterwards; your own LibreOffice profile is
+never used.
+
+The unit tests hide an installed LibreOffice from every test except `tests/test_soffice.py`.
+The tests marked `libreoffice` run the real one (about 10 s with the snap) and are skipped when
+it is missing. To leave them out:
+
+```sh
+.venv/bin/python -m pytest -q -m "not libreoffice"
+```
