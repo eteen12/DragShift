@@ -263,6 +263,69 @@ def test_menu_capture_is_inpainted_under_the_cursor(qapp, lx, monkeypatch):
     assert r < 128 and b > 128, (r, g, b)
 
 
+def _menu_lines(capsys) -> list[str]:
+    return [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("menu: ")]
+
+
+@linux_only
+def test_menu_backdrop_fallback_order_and_log_line(qapp, lx, monkeypatch, capsys):
+    """#39: one line per popup says where the backdrop came from: the extension's capture
+    (with its time), else the wallpaper, else Qt's grab (xcb), else the painted frost,
+    which has no backdrop and starts no glass render."""
+    import re
+    from PySide6.QtGui import QPixmap, QScreen
+    from dragshift import radial
+    monkeypatch.setattr(lx, "place_window", lambda *a: False)
+    monkeypatch.setattr(lx, "work_area", lambda x, y: None)
+    blue = lambda x, y, w, h, *a, **k: Image.new("RGB", (w, h), (10, 120, 200))  # noqa: E731
+    for capture, wall, grab, line in (
+            (blue, None, True, r"menu: linux capture \d+\.\d ms"),
+            (lambda *a, **k: None, blue, True, r"menu: wallpaper fallback, \d+\.\d ms"),
+            (lambda *a, **k: None, lambda *a: None, True, r"menu: qt grab fallback, \d+\.\d ms"),
+            (lambda *a, **k: None, lambda *a: None, False, r"menu: frost fallback")):
+        monkeypatch.setattr(lx, "capture", capture)
+        monkeypatch.setattr(lx, "wallpaper_crop", wall or (lambda *a: None))
+        if not grab:   # Qt's grab under Wayland: an empty pixmap
+            monkeypatch.setattr(QScreen, "grabWindow", lambda *a: QPixmap())
+        capsys.readouterr()
+        menu, _ = _popup(radial, (300, 300))
+        lines = _menu_lines(capsys)
+        backdrop = [ln for ln in lines if re.fullmatch(
+            r"menu: (linux capture|wallpaper fallback|qt grab fallback|frost fallback).*", ln)]
+        assert len(backdrop) == 1 and re.fullmatch(line, backdrop[0]), lines
+        assert (menu.backdrop is None) == (not grab)
+        assert (menu._raw_backdrop is None) == (not grab)
+        assert set(menu.liquid) == ({4, 7} if grab else set())   # the speculative renders
+
+
+@linux_only
+def test_menu_logs_when_the_refracted_glass_is_on_screen(qapp, lx, monkeypatch, capsys):
+    """The latency line: once per popup, when the first frame with the liquid render is
+    painted, with the time of the first frame (the frost) before it."""
+    import re
+    from PySide6.QtCore import QPoint, QThreadPool
+    from dragshift import radial
+    monkeypatch.setattr(lx, "place_window", lambda *a: False)
+    monkeypatch.setattr(lx, "work_area", lambda x, y: None)
+    monkeypatch.setattr(lx, "capture", lambda x, y, w, h, *a, **k: Image.new("RGB", (w, h)))
+    menu = radial.RadialMenu(lambda p: {}, lambda p: "")
+    for _ in range(2):
+        capsys.readouterr()
+        menu.popup(QPoint(300, 300))
+        menu.repaint()                           # the first frame: frost
+        gc.collect()
+        QThreadPool.globalInstance().waitForDone(10000)
+        for _ in range(20):
+            qapp.processEvents()
+            menu.repaint()
+        menu.hide()
+        lines = [ln for ln in _menu_lines(capsys) if ln.startswith("menu: glass on screen")]
+        assert len(lines) == 1, lines
+        m = re.fullmatch(r"menu: glass on screen (\d+\.\d) ms after popup, "
+                         r"first frame (\d+\.\d) ms", lines[0])
+        assert m and float(m[2]) <= float(m[1])
+
+
 @pytest.fixture
 def placing(qapp, lx, monkeypatch):
     """The extension's side of popup(), recorded: capture rects, PlaceWindow calls (and

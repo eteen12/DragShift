@@ -261,6 +261,60 @@ def test_decoded_once_per_file_version_and_monitor(lx, monkeypatch, tmp_path):
     assert calls == [(1600, 900), (1600, 900), (800, 600)]
 
 
+# ---------------------------------------------------------------- warm-up at start (#39)
+def test_warm_up_decodes_off_the_gui_thread_so_the_first_crop_is_cached(lx, qapp, monkeypatch,
+                                                                        tmp_path, capsys):
+    """The app warms the cache at start: every monitor's picture is decoded on a
+    background thread, and the menu's first wallpaper crop then decodes nothing."""
+    import threading
+    path = quadrants(tmp_path / "wall.png")
+    use(lx, path)
+    lx.fake_monitors[:] = [s.geometry().getRect() for s in qapp.screens()]
+    threads = []
+    real = lx._decode_zoom
+    monkeypatch.setattr(lx, "_decode_zoom", lambda *a: threads.append(
+        threading.current_thread()) or real(*a))
+    t = lx.warm_wallpaper()
+    assert t is not None
+    t.join(10)
+    assert len(threads) == len(lx.fake_monitors)
+    assert all(th is not threading.main_thread() for th in threads)
+    assert "wallpaper: cache warmed for" in capsys.readouterr().out
+    mx, my, mw, mh = lx.fake_monitors[0]
+    lx.wallpaper_crop(mx, my, 100, 100)
+    assert len(threads) == len(lx.fake_monitors)      # cached: no second decode
+
+
+def test_crop_during_warm_up_waits_for_it_instead_of_decoding_again(lx, qapp, monkeypatch,
+                                                                    tmp_path):
+    import threading
+    path = quadrants(tmp_path / "wall.png")
+    use(lx, path)
+    lx.fake_monitors[:] = [qapp.primaryScreen().geometry().getRect()]
+    started, go, calls = threading.Event(), threading.Event(), []
+    real = lx._decode_zoom
+
+    def slow(*a):
+        calls.append(a)
+        started.set()
+        go.wait(5)
+        return real(*a)
+
+    monkeypatch.setattr(lx, "_decode_zoom", slow)
+    t = lx.warm_wallpaper()
+    assert started.wait(5)
+    threading.Timer(0.2, go.set).start()
+    mx, my = lx.fake_monitors[0][:2]
+    im = lx.wallpaper_crop(mx, my, 10, 10)          # blocks until the warm-up decoded
+    t.join(5)
+    assert len(calls) == 1 and close(mean(im), RED)
+
+
+def test_warm_up_without_gnome_settings_does_nothing(lx, qapp, monkeypatch):
+    monkeypatch.setattr(lx, "_read_settings", lambda: None)
+    assert lx.warm_wallpaper() is None
+
+
 # ---------------------------------------------------------------- real settings reader / Qt
 FAKE_GSETTINGS = """#!/bin/sh
 if [ "$1 $2" = "list-recursively org.gnome.desktop.background" ]; then

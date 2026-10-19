@@ -119,6 +119,8 @@ class RadialMenu(QWidget):
         self.resize(SIZE, SIZE)
         if IS_LINUX:
             self.setWindowTitle(MENU_TITLE)
+            self._popup_t = 0.0
+            self._frames = [None, True]
             self._watch: threading.Event | None = None   # set = stop the pointer watch
             self._watch_serial = 0
             self._menu_rect = QRect()
@@ -165,6 +167,8 @@ class RadialMenu(QWidget):
     # ------------------------------------------------------------ show / hide
     def popup(self, pos: QPoint | None = None, paths: list[str] | None = None):
         if IS_LINUX:
+            self._popup_t = time.perf_counter()
+            self._frames = [None, False]    # first frame ms, glass logged (paintEvent)
             pos = QPoint(pos) if pos is not None else self._linux_pointer()
         else:
             pos = pos or QCursor.pos()
@@ -192,8 +196,15 @@ class RadialMenu(QWidget):
                     raw = glass.inpaint_rects(raw, [(cx - 70, cy - 64, cx + 70, cy + 64)])
                 shot = QPixmap.fromImage(glass.qimage_from_pil(raw))
             elif IS_LINUX:
-                # the shell extension's capture, else the wallpaper, else Qt's grab
+                # the shell extension's capture, else the wallpaper, else Qt's grab (xcb
+                # only: under Wayland it is empty), else the painted frost
+                t0 = time.perf_counter()
                 raw = glass.grab_screen(tl.x(), tl.y(), SIZE, SIZE)
+                ms = (time.perf_counter() - t0) * 1e3
+                print("menu: " + ("frost fallback" if raw is None else {
+                    "capture": f"linux capture {ms:.1f} ms",
+                    "wallpaper": f"wallpaper fallback, {ms:.1f} ms"}.get(
+                    glass.LAST_SOURCE, f"qt grab fallback, {ms:.1f} ms")), flush=True)
                 if raw is None:
                     raise RuntimeError("capture failed")
                 if glass.LAST_SOURCE == "capture" and paths is None:
@@ -279,6 +290,17 @@ class RadialMenu(QWidget):
         moved = platform_linux.place_window(MENU_TITLE, tl.x(), tl.y())
         print(f"menu: at ({tl.x()}, {tl.y()}) {SIZE}x{SIZE}, moved now: {moved}, "
               f"backdrop: {glass.LAST_SOURCE or 'none'}", flush=True)
+
+    def _linux_frame_timing(self, refracted: bool):
+        """One line per popup once the refracted glass is first painted: how long after
+        popup() that was, and the first frame (the frost from the blurred backdrop)."""
+        ms = (time.perf_counter() - self._popup_t) * 1e3
+        if self._frames[0] is None:
+            self._frames[0] = ms
+        if refracted:
+            self._frames[1] = True
+            print(f"menu: glass on screen {ms:.1f} ms after popup, first frame "
+                  f"{self._frames[0]:.1f} ms", flush=True)
 
     def _linux_click_watch(self, on: bool):
         """Linux click mode (#36). The menu never holds the keyboard focus (the extension
@@ -588,6 +610,8 @@ class RadialMenu(QWidget):
             p.drawImage(0, 0, img)
         else:
             self._paint_fallback(p, c, n)
+        if IS_LINUX and not self._frames[1]:
+            self._linux_frame_timing(have_liquid)
 
         fg, fg_dim, shadow_col = self._text_colors()
         rot = (1 - self._swap) * -22
