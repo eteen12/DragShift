@@ -1,0 +1,56 @@
+trigger: following the extension's pointer state
+trigger: menu at (412, 266)
+menu: at (212, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '679 B', rings: Convert 9, Tools 8
+menu: dropped 1 file(s) on PNG (Convert), proposed CopyAction, answered CopyAction
+qt.qpa.wayland.textinput: virtual void QtWaylandClient::QWaylandTextInputv3::disableSurface(wl_surface*) Trying to disable 0x61b26e0 but 0x0 is focused
+trigger: menu at (1457, 647)
+menu: at (1199, 447) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '156 B', rings: Convert 9, Tools 8
+menu: dropped 1 file(s) on JPG (Convert), proposed CopyAction, answered CopyAction
+trigger: menu at (412, 266)
+menu: at (212, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '156 B', rings: Convert 9, Tools 8
+menu: dropped 1 file(s) on JPG (Convert), proposed MoveAction, answered CopyAction
+qt.qpa.wayland.textinput: virtual void QtWaylandClient::QWaylandTextInputv3::disableSurface(wl_surface*) Trying to disable 0x6b4a0f0 but 0x0 is focused
+trigger: menu at (1457, 647)
+menu: at (1199, 447) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '679 B', rings: Convert 9, Tools 8
+menu: dropped 1 file(s) on PNG (Convert), proposed CopyAction, answered CopyAction
+trigger: menu at (522, 266)
+menu: at (322, 66) 400x400, moved now: False, backdrop: capture
+menu: 2 file(s), hub '2 files', rings: Convert 9, Tools 8
+menu: dropped 2 file(s) on PDF (Convert), proposed MoveAction, answered CopyAction
+qt.qpa.wayland.textinput: virtual void QtWaylandClient::QWaylandTextInputv3::disableSurface(wl_surface*) Trying to disable 0x7804fb0 but 0x0 is focused
+trigger: menu at (1457, 523)
+menu: at (1199, 323) 400x400, moved now: False, backdrop: capture
+menu: 2 file(s), hub '2 files', rings: Convert 9, Tools 8
+menu: dropped 2 file(s) on PDF (Convert), proposed CopyAction, answered CopyAction
+trigger: menu at (412, 266)
+menu: at (212, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '1.1 KB', rings: Convert 4, Tools 6
+ring: Tools
+menu: dropped 1 file(s) on Rotate (Tools), proposed MoveAction, answered CopyAction
+qt.qpa.wayland.textinput: virtual void QtWaylandClient::QWaylandTextInputv3::disableSurface(wl_surface*) Trying to disable 0x7950eb0 but 0x0 is focused
+trigger: menu at (1457, 647)
+menu: at (1199, 447) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '1.1 KB', rings: Convert 4, Tools 6
+menu: hub hover, ring: Tools
+menu: dropped 1 file(s) on Compress (Tools), proposed CopyAction, answered CopyAction
+trigger: menu at (412, 266)
+menu: at (212, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '679 B', rings: Convert 9, Tools 8
+menu: dropped beside the petals, nothing to run
+trigger: menu at (412, 266)
+menu: at (212, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '679 B', rings: Convert 9, Tools 8
+menu: dropped beside the petals, nothing to run
+trigger: menu at (412, 266)
+menu: at (212, 66) 400x400, moved now: False, backdrop: capture
+menu: 1 file(s), hub '22 B', rings: none
+menu: dropped beside the petals, nothing to run
+trigger: menu at (522, 266)
+menu: at (322, 66) 400x400, moved now: False, backdrop: capture
+menu: 2 file(s), hub '2 files', rings: Convert 9, Tools 8
+menu: dropped 2 file(s) on PNG (Convert), proposed MoveAction, answered CopyAction
+qt.qpa.wayland.textinput: virtual void QtWaylandClient::QWaylandTextInputv3::disableSurface(wl_surface*) Trying to disable 0x619f900 but 0x0 is focused

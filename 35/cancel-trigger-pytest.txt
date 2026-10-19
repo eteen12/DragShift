@@ -1,0 +1,44 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0 -- /home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/accept-drops/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/accept-drops
+collecting ... collected 12 items
+
+tests/linux/test_menu_cancel.py::test_escape_over_the_menu_closes_it[nautilus] 
+nautilus: menu gone 166 ms after Escape (grace 150 ms), button still down: True
+PASSED
+tests/linux/test_menu_cancel.py::test_escape_over_the_menu_closes_it[desktop] 
+desktop: menu gone 167 ms after Escape (grace 150 ms), button still down: True
+PASSED
+tests/linux/test_menu_cancel.py::test_dragged_out_and_released_over_files[nautilus] 
+released over Files at (810, 670): menu gone 130 ms after the button went up
+PASSED
+tests/linux/test_menu_cancel.py::test_shift_drag_without_a_file_times_out 
+no file: menu gone 838 ms after the pointer moved (timeout 50 ticks)
+PASSED
+tests/linux/test_trigger.py::test_extension_enabled_after_start_is_picked_up 
+extension picked up 0.7 s after it was enabled
+PASSED
+tests/linux/test_trigger.py::test_shift_after_moving_opens_the_menu[nautilus] 
+nautilus shift_first=False: menu after 158 ms, frame (212, 66, 400, 400) (first listed at (66, 32, 400, 400)), pointer (412, 266); centre offset (0, 0)
+PASSED
+tests/linux/test_trigger.py::test_shift_after_moving_opens_the_menu[desktop] 
+desktop shift_first=False: menu after 66 ms, frame (1199, 447, 400, 400) (first listed at (1199, 447, 400, 400)), pointer (1457, 647); centre offset (-58, 0)
+PASSED
+tests/linux/test_trigger.py::test_shift_before_the_button_opens_the_menu[nautilus] 
+nautilus shift_first=True: menu after 57 ms, frame (156, 49, 400, 400) (first listed at (156, 49, 400, 400)), pointer (360, 250); centre offset (-4, -1)
+PASSED
+tests/linux/test_trigger.py::test_shift_before_the_button_opens_the_menu[desktop] 
+desktop shift_first=True: menu after 61 ms, frame (1199, 482, 400, 400) (first listed at (1199, 482, 400, 400)), pointer (1513, 680); centre offset (-114, 2)
+PASSED
+tests/linux/test_trigger.py::test_drag_without_shift_opens_nothing[nautilus] PASSED
+tests/linux/test_trigger.py::test_disabled_in_the_tray_opens_nothing[nautilus] 
+nautilus shift_first=False: menu after 61 ms, frame (212, 66, 400, 400) (first listed at (212, 66, 400, 400)), pointer (412, 266); centre offset (0, 0)
+PASSED
+tests/linux/test_trigger.py::test_extension_stopping_closes_the_open_menu[nautilus] 
+menu closed 207 ms after the extension stopped
+
+nautilus shift_first=False: menu after 62 ms, frame (212, 66, 400, 400) (first listed at (212, 66, 400, 400)), pointer (412, 266); centre offset (0, 0)
+PASSED
+
+======================== 12 passed in 96.25s (0:01:36) =========================

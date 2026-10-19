@@ -1,0 +1,46 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0 -- /home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/accept-drops/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/accept-drops
+collecting ... collected 12 items
+
+tests/linux/test_menu_drop.py::test_one_file_onto_a_petal[nautilus-jpg-png] 
+PNG: proposed CopyAction, answered CopyAction
+nautilus: 'Photo.jpg' → 'Photo.png', PNG 64x48, source unchanged
+PASSED
+tests/linux/test_menu_drop.py::test_one_file_onto_a_petal[desktop-png-jpg] 
+JPG: proposed CopyAction, answered CopyAction
+desktop: 'Shot 007b.png' → 'Shot 007b.jpg', JPEG 80x60, source unchanged
+PASSED
+tests/linux/test_menu_drop.py::test_one_file_onto_a_petal[nautilus-odd-name] 
+JPG: proposed MoveAction, answered CopyAction
+nautilus: 'Été café #2 ünï.png' → 'Été café #2 ünï.jpg', JPEG 80x60, source unchanged
+PASSED
+tests/linux/test_menu_drop.py::test_one_file_onto_a_petal[desktop-odd-name] 
+PNG: proposed CopyAction, answered CopyAction
+desktop: 'My photo #d1e7 – ½.jpg' → 'My photo #d1e7 – ½.png', PNG 64x48, source unchanged
+PASSED
+tests/linux/test_menu_drop.py::test_two_files_onto_pdf_make_one_pdf[nautilus] 
+PDF: proposed MoveAction, answered CopyAction
+nautilus: 2 files → 'Photo Ad09a Combined.pdf', 2 pages, sources unchanged
+PASSED
+tests/linux/test_menu_drop.py::test_two_files_onto_pdf_make_one_pdf[desktop] 
+PDF: proposed CopyAction, answered CopyAction
+desktop: 2 files → 'Photo A6e14 Combined.pdf', 2 pages, sources unchanged
+PASSED
+tests/linux/test_menu_drop.py::test_tools_ring[nautilus-shift-tap] 
+Rotate: proposed MoveAction, answered CopyAction
+nautilus: ring flipped by shift, Rotate → 'Doc9cf4 Rotated.pdf', 2 pages, source unchanged
+PASSED
+tests/linux/test_menu_drop.py::test_tools_ring[desktop-hub-hover] 
+Compress: proposed CopyAction, answered CopyAction
+desktop: ring flipped by hub, Compress → 'Doc362e Compressed.pdf', 2 pages, source unchanged
+PASSED
+tests/linux/test_menu_drop.py::test_drop_beside_the_petals_runs_nothing[corner] PASSED
+tests/linux/test_menu_drop.py::test_drop_beside_the_petals_runs_nothing[hub] PASSED
+tests/linux/test_menu_drop.py::test_type_without_petals_runs_nothing PASSED
+tests/linux/test_menu_drop.py::test_mixed_selection_runs_on_the_files_the_petal_applies_to 
+PNG: proposed MoveAction, answered CopyAction
+PASSED
+
+======================== 12 passed in 141.87s (0:02:21) ========================
