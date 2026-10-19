@@ -4,6 +4,9 @@
 // enable() exports the object and owns the bus name; disable() undoes both and drops the
 // window-placement rules (placement.js). Both are idempotent. Nothing in the shell (Main,
 // the stage) is patched.
+//
+// Every method but Version answers only the DragShift app (#93, caller.js): each goes
+// through this._callers.serve(), which replies AccessDenied to anyone else.
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -13,6 +16,7 @@ import Shell from 'gi://Shell';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+import {Callers, isTestSession} from './caller.js';
 import {WindowPlacer} from './placement.js';
 
 const BUS_NAME = 'io.github.eteen12.DragShift';
@@ -22,32 +26,35 @@ const CAPTURE_MAX_STRIPS = 4;
 const CAPTURE_STRIP_PIXELS = 40000;
 
 class DragShiftService {
-    constructor(metadata, placer) {
+    constructor(metadata, callers, placer) {
         this._version = metadata['version-name'] ?? 'unknown';
+        this._callers = callers;
         this._placer = placer;
         this.escape = null;     // EscapeWatch, set by enable()
     }
 
+    // Open to every caller: the app and the installer use it to find the extension.
     Version() {
         return this._version;
     }
 
-    GetPointer() {
-        const [x, y, mask] = global.get_pointer();
-        return [x, y, mask];
+    GetPointerAsync(_params, invocation) {
+        this._callers.serve(invocation, () => {
+            const [x, y, mask] = global.get_pointer();
+            invocation.return_value(new GLib.Variant('(iiu)', [x, y, mask]));
+        });
     }
 
     // Window placement (#10), see placement.js.
     PlaceWindowAsync([title, x, y], invocation) {
-        this._placer.place(invocation.get_sender(), title, x, y,
-            placed => invocation.return_value(new GLib.Variant('(b)', [placed])),
-            e => invocation.return_dbus_error('org.freedesktop.DBus.Error.Failed', `${e}`));
+        this._callers.serve(invocation, pid => invocation.return_value(new GLib.Variant(
+            '(b)', [this._placer.place(invocation.get_sender(), pid, title, x, y)])));
     }
 
     // See EscapeWatch below.
     WatchEscapeAsync([on], invocation) {
-        invocation.return_value(new GLib.Variant('(b)',
-            [this.escape.watch(on, invocation.get_sender())]));
+        this._callers.serve(invocation, () => invocation.return_value(new GLib.Variant(
+            '(b)', [this.escape.watch(on, invocation.get_sender())])));
     }
 
     // ------------------------------------------------------------ CaptureArea (#26)
@@ -62,7 +69,8 @@ class DragShiftService {
     // rect is painted as up to CAPTURE_MAX_STRIPS horizontal strips whose PNGs are
     // encoded in parallel threads; the app stacks them.
     CaptureAreaAsync(params, invocation) {
-        this._serveCapture(params, invocation, () => []);
+        this._callers.serve(invocation,
+            () => this._serveCapture(params, invocation, () => []));
     }
 
     // Validate and clamp the rect, run the capture after the previous one, reply
@@ -133,33 +141,13 @@ class DragShiftService {
     // ------------------------------------------------ CaptureAreaExcludingCaller (#28)
     // CaptureArea that also leaves out every window of the calling process, so the app
     // can re-capture what is behind its own visible toasts and tool windows. The caller
-    // is identified by the bus, not by anything it sends: its pid from the bus daemon,
-    // matched against Meta.Window.get_pid() (Wayland client credentials, or XRes for
-    // Xwayland windows). Those actors are hidden in the same synchronous paint as the
-    // drag icon, so they never disappear from the screen.
+    // is identified by the bus, not by anything it sends: its pid from the bus daemon
+    // (caller.js), matched against Meta.Window.get_pid() (Wayland client credentials, or
+    // XRes for Xwayland windows). Those actors are hidden in the same synchronous paint
+    // as the drag icon, so they never disappear from the screen.
     CaptureAreaExcludingCallerAsync(params, invocation) {
-        this._serveCapture(params, invocation,
-            () => this._callerPid(invocation).then(pid => this._windowActorsOf(pid)));
-    }
-
-    // Promise of the pid of the process that sent `invocation`, from the bus daemon
-    // (org.freedesktop.DBus.GetConnectionUnixProcessID). The one place a method asks who
-    // its caller is (#93 verifies the caller with it).
-    _callerPid(invocation) {
-        return new Promise((resolve, reject) => {
-            invocation.get_connection().call('org.freedesktop.DBus',
-                '/org/freedesktop/DBus', 'org.freedesktop.DBus',
-                'GetConnectionUnixProcessID',
-                new GLib.Variant('(s)', [invocation.get_sender()]),
-                new GLib.VariantType('(u)'), Gio.DBusCallFlags.NONE, 1000, null,
-                (conn, res) => {
-                    try {
-                        resolve(conn.call_finish(res).deepUnpack()[0]);
-                    } catch (e) {
-                        reject(e);
-                    }
-                });
-        });
+        this._callers.serve(invocation, pid =>
+            this._serveCapture(params, invocation, () => this._windowActorsOf(pid)));
     }
 
     // Window actors whose window belongs to process `pid` (none for an unknown pid).
@@ -175,6 +163,10 @@ class DragShiftService {
     // stack at its bottom right. A native Wayland client can't learn it: Qt's
     // availableGeometry() is the whole monitor there. Read-only, no side effects.
     GetWorkAreaAsync([x, y], invocation) {
+        this._callers.serve(invocation, () => this._workArea(x, y, invocation));
+    }
+
+    _workArea(x, y, invocation) {
         const layout = Main.layoutManager;
         let index = layout.monitors.findIndex(m =>
             x >= m.x && x < m.x + m.width && y >= m.y && y < m.y + m.height);
@@ -201,7 +193,6 @@ class EscapeWatch {
         this._emit = emit;          // () => emit the EscapePressed signal
         this._action = Meta.KeyBindingAction.NONE;
         this._owner = null;         // unique bus name of the caller holding the grab
-        this._ownerWatch = 0;
         this._activatedId = global.display.connect('accelerator-activated',
             (display, action) => {
                 if (action !== Meta.KeyBindingAction.NONE && action === this._action)
@@ -226,19 +217,16 @@ class EscapeWatch {
             Shell.ActionMode.ALL);
         this._action = action;
         this._owner = sender;
-        this._ownerWatch = Gio.bus_watch_name(Gio.BusType.SESSION, sender,
-            Gio.BusNameWatcherFlags.NONE, null, () => {
-                if (this._owner === sender)
-                    this._ungrab();
-            });
         return true;
     }
 
+    // `name` left the bus (Callers.onVanished): its grab goes with it.
+    forget(name) {
+        if (this._owner === name)
+            this._ungrab();
+    }
+
     _ungrab() {
-        if (this._ownerWatch) {
-            Gio.bus_unwatch_name(this._ownerWatch);
-            this._ownerWatch = 0;
-        }
         if (this._action !== Meta.KeyBindingAction.NONE) {
             Main.wm.allowKeybinding(Meta.external_binding_name_for_action(this._action),
                 Shell.ActionMode.NONE);
@@ -261,11 +249,18 @@ export default class DragShiftExtension extends Extension {
             return;
         const [, bytes] = this.dir.get_child('dbus.xml').load_contents(null);
         const xml = new TextDecoder().decode(bytes);
+        this._callers = new Callers(isTestSession());
         this._placer = new WindowPlacer();
-        this._service = new DragShiftService(this.metadata, this._placer);
+        this._service = new DragShiftService(this.metadata, this._callers, this._placer);
         this._dbusObject = Gio.DBusExportedObject.wrapJSObject(xml, this._service);
-        this._service.escape = new EscapeWatch(
+        const escape = new EscapeWatch(
             () => this._dbusObject?.emit_signal('EscapePressed', null));
+        this._service.escape = escape;
+        const placer = this._placer;
+        this._callers.onVanished(name => {
+            escape.forget(name);
+            placer.forget(name);
+        });
         this._dbusObject.export(Gio.DBus.session, OBJECT_PATH);
         this._nameId = Gio.bus_own_name(Gio.BusType.SESSION, BUS_NAME,
             Gio.BusNameOwnerFlags.NONE, null, null, null);
@@ -284,5 +279,7 @@ export default class DragShiftExtension extends Extension {
         this._service = null;
         this._placer?.destroy();
         this._placer = null;
+        this._callers?.destroy();
+        this._callers = null;
     }
 }
