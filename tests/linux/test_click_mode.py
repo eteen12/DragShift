@@ -29,6 +29,7 @@ import pytest
 from PIL import Image
 
 from dragshift import app as dsapp
+from dragshift import handoff
 from dragshift import platform_linux as lx
 from dragshift.radial import MENU_TITLE, R_IN, R_OUT, SIZE, angles
 from tests.linux import inject
@@ -77,8 +78,7 @@ def env(request, built_dir):  # noqa: F811
         conf.parent.mkdir(parents=True, exist_ok=True)
         conf.write_text("[General]\nwelcomed=true\n")   # no Welcome window over the menu
         yield SimpleNamespace(session=s, shell=shell, scale=scale, home=Path(e["HOME"]),
-                              socket=Path(e["TMPDIR"]) / ("DragShift-" + (
-                                  e.get("USERNAME") or e.get("USER") or "user")),
+                              socket=Path(handoff.socket_path(e)),   # in XDG_RUNTIME_DIR
                               log=Path(e["XDG_STATE_HOME"]) / "DragShift" / "log.txt")
         shell.release_all()
 
