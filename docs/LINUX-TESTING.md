@@ -12,16 +12,21 @@ uv venv .venv
 uv pip install -r requirements.txt pytest
 ```
 
-Without uv: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest`,
-then use `.venv/bin/python -m pytest` wherever this guide says `uv run pytest`.
+Without uv: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest`.
+
+Run everything with `.venv/bin/python`, as below, not `uv run`. Under `uv run` the tests
+start the app as `python3`, and `test_click_mode.py`'s file-picker checks fail on the
+picker's app id (#133).
 
 ## Quick unit loop
 
 ```sh
-uv run pytest -m "not gnome"                     # about 1 min, no session
-uv run pytest -m "not gnome and not libreoffice" # also skip the real LibreOffice (~10 s each)
-uv run pytest tests/test_menu_drop.py            # one file
+.venv/bin/python -m pytest -m "not gnome"                      # about 1 min, no session
+.venv/bin/python -m pytest -m "not gnome and not libreoffice"  # no real LibreOffice either
+.venv/bin/python -m pytest tests/test_menu_drop.py             # one file
 ```
+
+The `libreoffice` tests run the installed LibreOffice, about 10 s each.
 
 `tests/conftest.py` makes every test safe to run on your desktop:
 - `QT_QPA_PLATFORM=offscreen` unless you set it, so nothing shows on screen.
@@ -31,7 +36,7 @@ uv run pytest tests/test_menu_drop.py            # one file
   (not for `gnome` and `libreoffice` tests).
 - An installed LibreOffice is hidden from every test except `tests/test_soffice.py`.
 
-`uv run pytest` with no marker runs everything, the session tests included.
+`.venv/bin/python -m pytest` with no marker runs everything, the session tests included.
 
 ## The isolated GNOME session
 
@@ -59,11 +64,11 @@ icons and talks to the real system bus. Never start DragShift on your desktop to
 start it in a session.
 
 ```sh
-uv run python -m tests.linux.session -- gnome-extensions list    # run one command inside
-uv run python -m tests.linux.session --helper -- gdbus call --session \
+.venv/bin/python -m tests.linux.session -- gnome-extensions list  # run one command inside
+.venv/bin/python -m tests.linux.session --helper -- gdbus call --session \
   --dest io.github.eteen12.DragShiftTest --object-path /io/github/eteen12/DragShiftTest \
   --method io.github.eteen12.DragShiftTest.ListWindows
-uv run python -m tests.linux.session      # print the session env; Ctrl-C to stop
+.venv/bin/python -m tests.linux.session  # print the session env; Ctrl-C to stop
 ```
 
 Options: `--size WxH` (default 1600x900), `--scale 2` (with `--size 3200x1800` for
@@ -78,12 +83,12 @@ To try DragShift's own extension and the app in a session:
 extension/build.sh
 ext=$(mktemp -d)/dragshift@eteen12.github.io
 unzip -q -d "$ext" dist/dragshift@eteen12.github.io.shell-extension.zip
-uv run python -m tests.linux.session --extension "$ext" -- \
+.venv/bin/python -m tests.linux.session --extension "$ext" -- \
   sh -c 'gdbus wait --session --timeout 10 io.github.eteen12.DragShift &&
     gdbus call --session --dest io.github.eteen12.DragShift \
       --object-path /io/github/eteen12/DragShift --method io.github.eteen12.DragShift.Version'
-uv run python -m tests.linux.session --size 3200x1800 --scale 2 \
-  --extension "$ext" -- python -m dragshift   # Ctrl-C to stop
+.venv/bin/python -m tests.linux.session --size 3200x1800 --scale 2 \
+  --extension "$ext" -- .venv/bin/python -m dragshift   # Ctrl-C to stop
 ```
 
 ## Session tests
@@ -93,8 +98,8 @@ Tests marked `gnome` use the session. They need `gnome-shell`, `dbus` (`dbus-run
 normal Ubuntu desktop has, and are skipped without them.
 
 ```sh
-uv run pytest -m gnome tests/linux                 # all of them (about 20 min)
-uv run pytest -s tests/linux/test_menu_drop.py     # one file, with its timings and log lines
+.venv/bin/python -m pytest -m gnome tests/linux              # all of them, about 20 min
+.venv/bin/python -m pytest -s tests/linux/test_menu_drop.py  # one file, printing timings
 ```
 
 ### Writing one
@@ -152,10 +157,10 @@ Files, Ubuntu's dock, AppIndicator and DING, AT-SPI and Python 3.12, and runs
 nothing depends on your machine; the host session stays the main way to test.
 
 ```sh
-tests/linux/docker/run.sh                          # gnome tests in the image
-tests/linux/docker/run.sh -k nautilus -v           # extra arguments go to pytest
+tests/linux/docker/run.sh                 # gnome tests in the image
+tests/linux/docker/run.sh -k nautilus -v  # extra arguments go to pytest
 DRAGSHIFT_TEST_IMAGE=dragshift-gnome-test:libreoffice \
-  DOCKER_BUILD_ARGS="--build-arg WITH_LIBREOFFICE=1" tests/linux/docker/run.sh   # + LibreOffice
+  DOCKER_BUILD_ARGS="--build-arg WITH_LIBREOFFICE=1" tests/linux/docker/run.sh  # + LibreOffice
 ```
 
 - The repo is mounted read-only and the Python packages live in the image. The script
@@ -175,16 +180,17 @@ real Shift+drag into the menu and a drop on a petal. It then checks the app logg
 drop, verifies the output and checks the dragged files kept their bytes and mtime.
 
 ```sh
-uv run python demo/e2e_linux.py --list                    # scenarios, grouped by file
-uv run python demo/e2e_linux.py --only "JPG → PNG"        # one (repeat --only for more)
-uv run python demo/e2e_linux.py                           # every scenario
-uv run python demo/e2e_linux.py --record --out /tmp/e2e-rec   # + e2e_linux.mp4 (.webp without ffmpeg)
-uv run pytest tests/linux/test_e2e_smoke.py               # the runner itself
+.venv/bin/python demo/e2e_linux.py --list                       # scenarios, by file
+.venv/bin/python demo/e2e_linux.py --only "JPG → PNG"            # one (repeat --only)
+.venv/bin/python demo/e2e_linux.py                              # every scenario
+.venv/bin/python demo/e2e_linux.py --record --out /tmp/e2e-rec  # + e2e_linux.mp4
+.venv/bin/python -m pytest tests/linux/test_e2e_smoke.py        # the runner itself
 ```
 
 The exit code is 1 when a scenario is not PASS or none ran. A failed scenario takes a
 screenshot, presses Escape, releases every key and button, restores any missing sample file
-and the run goes on.
+and the run goes on. `--record` takes a screenshot every 0.5 s with a dot for the pointer
+and makes `e2e_linux.mp4` (`.webp` without ffmpeg).
 
 In Docker (after `tests/linux/docker/run.sh` has built the image), pass `--out` on a
 writable mount and run as your own user (the image's `tester` is uid 1001 and `/src` is
@@ -252,8 +258,9 @@ it. DragShift runs on native Wayland, so only the xcb comparison tests need it, 
 without it. To run them without installing anything:
 
 ```sh
-mkdir -p /tmp/xcb && cd /tmp/xcb && apt-get download libxcb-cursor0 && dpkg-deb -x libxcb-cursor0_*.deb . && cd -
-DRAGSHIFT_XCB_LIBS=/tmp/xcb/usr/lib/x86_64-linux-gnu uv run pytest -s tests/linux/test_display_backend.py
+mkdir -p /tmp/xcb && (cd /tmp/xcb && apt-get download libxcb-cursor0 && dpkg-deb -x libxcb-cursor0_*.deb .)
+DRAGSHIFT_XCB_LIBS=/tmp/xcb/usr/lib/x86_64-linux-gnu \
+  .venv/bin/python -m pytest -s tests/linux/test_display_backend.py
 ```
 
 ### LibreOffice inside the session
@@ -261,7 +268,7 @@ DRAGSHIFT_XCB_LIBS=/tmp/xcb/usr/lib/x86_64-linux-gnu uv run pytest -s tests/linu
 The snap LibreOffice can't start inside the session: `snap run` needs your real systemd
 user manager for its scope (`… is not a snap cgroup for tag snap.libreoffice.libreoffice`),
 so the app falls back to its built-in renderer there. Run the `libreoffice` tests on the
-host (`uv run pytest -m libreoffice tests/test_soffice.py`), not in a session. A stray
+host (`.venv/bin/python -m pytest -m libreoffice tests/test_soffice.py`), not in a session. A stray
 snap LibreOffice ignores `kill` from a confined shell; stop it with
 `systemctl --user stop snap.libreoffice.libreoffice-<uuid>.scope` (see `/proc/<pid>/cgroup`).
 
@@ -317,5 +324,15 @@ check to let a test in; move the test's code into a `tests/linux` module.
 
 `start()` waits for the shell's `GNOME Shell started at` line (60 s) and fails with the log
 tail. If a test changed the monitors before that, the overview stays up for good; change
-them only after `start()`. Under heavy load (several sessions at once) a start can take
-longer than usual; run fewer in parallel.
+them only after `start()`.
+
+### Glass or timing tests fail only in a full run
+
+Tests that compare a backdrop with the screen behind it (`test_window_glass.py`) or measure
+clicks and latency need a quiet machine. With several sessions running at once, they can
+fail and then pass when run alone. Rerun the file by itself before you debug.
+
+### `assert 'python3' == 'python'` in `test_click_mode.py`
+
+pytest was started through `uv run` or a `python3` binary, so the app (and GTK's file
+picker) runs as `python3`. Use `.venv/bin/python -m pytest` (#133).

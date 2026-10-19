@@ -37,7 +37,7 @@ which a normal Ubuntu desktop has.
 ```sh
 uv venv .venv
 uv pip install -r requirements.txt pytest
-uv run pytest -m "not gnome"
+.venv/bin/python -m pytest -m "not gnome"
 ```
 
 Without uv:
