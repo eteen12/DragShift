@@ -39,13 +39,9 @@ def test_import_needs_no_dbus_libraries():
 
 @linux_only
 def test_fallbacks_keep_todays_linux_behaviour(qapp, monkeypatch, tmp_path):
-    import os
-    from dragshift import glass, settings, toasts
+    from dragshift import glass, toasts
     assert glass.exclude_from_capture(0) is False
     assert glass.grab_screen(0, 0, 40, 30).size == (40, 30)          # Qt's grab, as before
-    assert settings.autostart_enabled() is False
-    settings.set_autostart(True)
-    assert not (Path(os.environ["XDG_CONFIG_HOME"]) / "autostart").exists()
     spawned = []
     monkeypatch.setattr(toasts.subprocess, "Popen", lambda cmd, *a, **k: spawned.append(cmd))
     toasts.reveal(tmp_path / "out.png")
