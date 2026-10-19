@@ -156,10 +156,11 @@ class DragShiftService {
     // CaptureArea that also leaves out every window of the calling process, so the app
     // can re-capture what is behind its own visible toasts and tool windows. The caller
     // is identified by the bus, not by anything it sends: its pid from the bus daemon
-    // (caller.js), matched against each window's pid (Meta.Window.get_pid(): Wayland client
-    // credentials, or XRes for Xwayland windows; launcher.js's windowPid() for an app the
-    // extension started, whose windows report the shell's pid). Those actors are hidden in the same synchronous paint
-    // as the drag icon, so they never disappear from the screen.
+    // (caller.js), matched against each window's pid: Meta.Window.get_pid() (Wayland
+    // client credentials, or XRes for Xwayland windows), or launcher.js's windowPid() for
+    // an app the extension started, whose windows report the shell's pid. Those actors
+    // are hidden in the same synchronous paint as the drag icon, so they never disappear
+    // from the screen.
     CaptureAreaExcludingCallerAsync(params, invocation) {
         this._callers.serve(invocation, pid =>
             this._serveCapture(params, invocation, () => this._windowActorsOf(pid)));
