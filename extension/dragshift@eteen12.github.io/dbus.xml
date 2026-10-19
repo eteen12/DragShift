@@ -28,5 +28,23 @@
       <arg name="watching" type="b" direction="out"/>
     </method>
     <signal name="EscapePressed"/>
+    <!-- CaptureArea (#26): the screen under a rect in stage (logical) pixels, without
+         the drag icon (Mutter's feedback group for Wayland drags, DND-type windows for
+         X11 ones) and without the cursor. The rect is clamped to the stage and the
+         clamped rect is returned. Its pixels come as PNGs of horizontal strips, top to
+         bottom (encoded in parallel), each the full width; stacked they are the clamped
+         rect times the monitor scale. An empty rect, or one entirely off the stage, is
+         an InvalidArgs error. Calls are served one at a time. -->
+    <method name="CaptureArea">
+      <arg name="x" type="i" direction="in"/>
+      <arg name="y" type="i" direction="in"/>
+      <arg name="width" type="i" direction="in"/>
+      <arg name="height" type="i" direction="in"/>
+      <arg name="area_x" type="i" direction="out"/>
+      <arg name="area_y" type="i" direction="out"/>
+      <arg name="area_width" type="i" direction="out"/>
+      <arg name="area_height" type="i" direction="out"/>
+      <arg name="strips" type="aay" direction="out"/>
+    </method>
   </interface>
 </node>

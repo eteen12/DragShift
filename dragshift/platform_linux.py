@@ -229,11 +229,74 @@ def _esc_call(router, on: bool) -> bool:
 
 
 # ---------------------------------------------------------------- screen capture
+CAPTURE_TIMEOUT = 0.5   # seconds; a 400×400 capture takes 10-20 ms, a busy shell longer
+
+
 def capture(x: int, y: int, w: int, h: int, exclude_self: bool = False):
-    """Screen rect (logical px) as a PIL RGB image, or None. The drag picture (Mutter's
-    drag actor) is ALWAYS left out. exclude_self additionally leaves DragShift's own
-    windows out, for live refresh behind toasts and tool windows."""
-    return None
+    """Screen rect (logical px) as a PIL RGB image of exactly w×h, or None. The drag
+    picture (Mutter's drag actor, or an X11 app's DND window) is ALWAYS left out, and so
+    is the cursor. exclude_self
+    additionally leaves DragShift's own windows out, for live refresh behind toasts and
+    tool windows.
+
+    The extension clamps the rect to the screen; the part that was off it is filled
+    with the nearest edge pixels. A HiDPI capture is scaled back to logical size.
+    None when the extension doesn't answer (missing, disabled, timeout) and, until the
+    extension can leave our own windows out (#28), when exclude_self is set."""
+    if w <= 0 or h <= 0 or exclude_self:
+        return None
+    body = _call("CaptureArea", "iiii", x, y, w, h, timeout=CAPTURE_TIMEOUT)
+    if not body or len(body) != 5:
+        return None
+    ax, ay, aw, ah, strips = body
+    try:
+        import io
+        from PIL import Image
+        parts = []
+        for png in strips:
+            with Image.open(io.BytesIO(png)) as part:
+                parts.append(part.convert("RGB"))
+        if not parts or len({p.width for p in parts}) != 1:
+            return None
+        im = Image.new("RGB", (parts[0].width, sum(p.height for p in parts)))
+        top = 0
+        for p in parts:                     # PNG strips, top to bottom
+            im.paste(p, (0, top))
+            top += p.height
+    except Exception:
+        return None
+    return _fit(im, (ax - x, ay - y, aw, ah), w, h)
+
+
+def _fit(im, area: tuple[int, int, int, int], w: int, h: int):
+    """`im` (the capture of `area`, given relative to the requested rect) on a w×h
+    canvas: scaled to the area's logical size, placed at its offset, and the uncovered
+    bands filled by stretching the nearest edge row/column."""
+    from PIL import Image
+    ox, oy, aw, ah = area
+    if im.size != (aw, ah):
+        im = im.resize((aw, ah), Image.BILINEAR)
+    if (ox, oy, aw, ah) == (0, 0, w, h):
+        return im
+    # Clip the area to the canvas (it never sticks out, but stay safe).
+    x0, y0 = max(0, ox), max(0, oy)
+    x1, y1 = min(w, ox + aw), min(h, oy + ah)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    im = im.crop((x0 - ox, y0 - oy, x1 - ox, y1 - oy))
+    out = Image.new("RGB", (w, h))
+    out.paste(im, (x0, y0))
+    iw, ih = im.size
+    # left/right bands from the first/last column, then top/bottom from full rows
+    if x0 > 0:
+        out.paste(im.crop((0, 0, 1, ih)).resize((x0, ih)), (0, y0))
+    if x1 < w:
+        out.paste(im.crop((iw - 1, 0, iw, ih)).resize((w - x1, ih)), (x1, y0))
+    if y0 > 0:
+        out.paste(out.crop((0, y0, w, y0 + 1)).resize((w, y0)), (0, 0))
+    if y1 < h:
+        out.paste(out.crop((0, y1 - 1, w, y1)).resize((w, h - y1)), (0, y1))
+    return out
 
 
 def wallpaper_crop(x: int, y: int, w: int, h: int):
