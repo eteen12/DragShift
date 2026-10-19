@@ -135,8 +135,9 @@ def test_relative_xdg_config_home_means_dot_config(home, lx, monkeypatch):
     assert lx.autostart_path() == home / "home" / ".config" / "autostart" / "dragshift.desktop"
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions")
 def test_failures_never_raise(home, lx, capsys):
+    if os.geteuid() == 0:            # checked here: the module must import on Windows too
+        pytest.skip("root ignores file permissions")
     (home / "config").mkdir()
     (home / "config" / "autostart").write_text("a file where the folder should be")
     lx.set_autostart(True)
