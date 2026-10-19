@@ -108,7 +108,10 @@ def test_get_own_window_frame_interface():
 
 
 # ---------------------------------------------------------------- GlassWindow
-def test_backdrop_comes_from_where_the_shell_put_the_window(ext, qapp, capsys):
+def test_backdrop_comes_from_where_the_shell_put_the_window(ext, qapp, monkeypatch):
+    from dragshift import app
+    logged = []
+    monkeypatch.setattr(app, "log_line", logged.append)
     w = window.GlassWindow("Crop", size=(420, 320))
     ext.frames[w.windowTitle()] = (300, 120, 420, 320)
     w.present()
@@ -119,7 +122,7 @@ def test_backdrop_comes_from_where_the_shell_put_the_window(ext, qapp, capsys):
     assert _until(lambda: w.liquid.image is not None)
     QThreadPool.globalInstance().waitForDone()
     qapp.processEvents()
-    assert "liquid: refreshed 420x320 at (300, 120) from" in capsys.readouterr().err
+    assert [ln[:44] for ln in logged] == ["liquid: refreshed 420x320 at (300, 120) from"]
 
     # a move (Qt gets no event for it under Wayland): one refresh once it has settled
     ext.frames[w.windowTitle()] = (350, 120, 420, 320)
