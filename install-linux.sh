@@ -3,6 +3,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/eteen12/DragShift/main/install-linux.sh | bash
 #   curl -fsSL …/install-linux.sh | bash -s -- --no-autostart     # with options
 #   ./install-linux.sh                                            # from a checkout: installs it
+#   curl -fsSL …/install-linux.sh | bash -s -- --uninstall        # removes it again
 # Everything goes into your home folder, so it never needs sudo. Run it again to update.
 # Read it first if you like: it's short.
 #
@@ -12,7 +13,9 @@
 #                       an update keeps what you chose in Settings)
 #   --no-start          don't start DragShift at the end
 #   --from-dir <dir>    install from this checkout instead of downloading
-#   --uninstall         not available yet (#67): prints what to remove
+#   --uninstall         quit DragShift and remove everything listed below; your settings
+#                       and log stay
+#   --uninstall --purge also remove your settings, log and cache (the last three below)
 #
 # Where things go (XDG_DATA_HOME defaults to ~/.local/share, XDG_CONFIG_HOME to ~/.config):
 #   $XDG_DATA_HOME/dragshift/src       the app's code, copied from the checkout or the fork
@@ -23,6 +26,10 @@
 #   $XDG_DATA_HOME/nautilus/scripts/DragShift…   Files: right-click → Scripts → DragShift…
 #   $XDG_DATA_HOME/gnome-shell/extensions/dragshift@eteen12.github.io   the shell extension
 #   $XDG_CONFIG_HOME/autostart/dragshift.desktop  start at login
+# What DragShift itself writes there (kept by --uninstall, removed by --purge):
+#   $XDG_CONFIG_HOME/DragShift         settings
+#   $XDG_STATE_HOME/DragShift          log (XDG_STATE_HOME defaults to ~/.local/state)
+#   $XDG_CACHE_HOME/DragShift, ~/snap/libreoffice/common/DragShift   LibreOffice's work folders
 #
 # Downloading: DRAGSHIFT_REPO (git URL), DRAGSHIFT_REF (branch or tag, default main) and
 # DRAGSHIFT_TARBALL (a .tar.gz URL, used instead of git) override where the code comes from.
@@ -79,16 +86,282 @@ is_checkout() { [ -f "$1/dragshift/__init__.py" ] && [ -f "$1/packaging/linux/dr
 
 tree_sum() { [ -d "$1" ] && (cd "$1" && find . -type f -print0 | sort -z | xargs -0r sha256sum) | sha256sum; }
 
+# A base folder (HOME, an XDG dir) everything below is put in or deleted from: it must be
+# absolute and must not be / itself, whatever its spelling ("//", "/tmp/..", a link to /).
+check_base() {
+  local real
+  case $2 in /*) ;; *) die "$1 must be an absolute path, not '$2'." ;; esac
+  case $2 in *[!/.]*) real=$(realpath -m -- "$2" 2>/dev/null) || real=$2 ;; *) real=/ ;; esac
+  [ "$real" != / ] || die "$1 is '$2', which is /: refusing to work there."
+}
+
+# The running DragShift of this install: <venv>/bin/python -m dragshift … (the launcher's
+# exec, #93). A DragShift run from a checkout or another install is not matched.
+app_pids() {
+  have pgrep || return 0
+  pgrep -u "$(id -u)" -f "^$(printf '%s' "$VENV" | sed 's/[][\.*^$+?(){}|]/\\&/g')/bin/python3? -m dragshift( |$)" || true
+}
+
+# Is one of the processes $@ still running? A zombie has exited (only its parent can
+# reap it).
+alive() {
+  local p state
+  for p in "$@"; do
+    kill -0 "$p" 2>/dev/null || continue
+    state=$(sed -n 's/^.*) \(.\) .*$/\1/p' "/proc/$p/stat" 2>/dev/null || true)
+    [ "$state" = Z ] || return 0
+  done
+  return 1
+}
+
+# Wait up to $1 tenths of a second until the processes $2… are gone; false if one is left.
+wait_gone() {
+  local n=$1
+  shift
+  for _ in $(seq "$n"); do
+    alive "$@" || return 0
+    sleep 0.1
+  done
+  ! alive "$@"
+}
+
+# A Python for the uninstaller's standard-library helpers: the system's, else the venv's.
+stdlib_py() {
+  local py
+  for py in python3 "$VENV/bin/python"; do
+    py=$(command -v "$py" 2>/dev/null) || continue
+    "$py" -c '' </dev/null 2>/dev/null && { printf '%s' "$py"; return 0; }
+  done
+  return 1
+}
+
+# Delete paths the installer made, saying so. Refuses / and the base folders themselves.
+REMOVED=0
+drop() {
+  local p
+  for p in "$@"; do
+    [ -e "$p" ] || [ -L "$p" ] || continue
+    case $p in
+      /?*) ;;
+      *) die "refusing to delete '$p'" ;;
+    esac
+    case $p in
+      "$HOME"|"$HOME/.local"|"$HOME/.local/share"|"$DATA_HOME"|"$CONFIG_HOME"|"$STATE_HOME"|"$CACHE_HOME")
+        die "refusing to delete $p" ;;
+    esac
+    if rm -rf -- "$p"; then
+      info "removed $p"
+      REMOVED=$((REMOVED + 1))
+    else
+      warn "Couldn't remove $p"
+    fi
+  done
+}
+
+# The hand-off socket (dragshift/handoff.py): "quit" asks this install's DragShift to quit
+# when it is the one listening there; "stale" deletes the socket when nobody listens.
+# Prints what it did. Arguments: the mode, then this install's app pids.
+SOCKET_PY=$(cat <<'PY'
+import os, socket, stat, sys, tempfile
+mode, pids = sys.argv[1], set(sys.argv[2:])
+run = os.environ.get("XDG_RUNTIME_DIR", "")
+def private(d):
+    try:
+        st = os.stat(d)
+    except OSError:
+        return False
+    return stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid() and not st.st_mode & 0o077
+if os.path.isabs(run) and private(run):
+    path = os.path.join(run, "DragShift")
+else:
+    user = os.environ.get("USERNAME") or os.environ.get("USER") or "user"
+    path = os.path.join(tempfile.gettempdir(), "DragShift-" + user)
+try:
+    st = os.lstat(path)
+except OSError:
+    sys.exit(0)
+if not stat.S_ISSOCK(st.st_mode) or st.st_uid != os.getuid():
+    sys.exit(0)
+try:
+    with open("/proc/net/unix") as f:
+        next(f)
+        listening = {c[6] for c in (line.rstrip("\n").split(None, 7) for line in f)
+                     if len(c) == 8 and c[7] == path and int(c[3], 16) & 0x10000}
+except (OSError, ValueError, StopIteration):
+    sys.exit(0)                     # can't tell who listens: leave it to the signals
+if mode == "stale":
+    if not listening:
+        os.unlink(path)
+        print(path)
+    sys.exit(0)
+ours = False
+for pid in pids:
+    try:
+        fds = os.listdir(f"/proc/{pid}/fd")
+    except OSError:
+        continue
+    for fd in fds:
+        try:
+            link = os.readlink(f"/proc/{pid}/fd/{fd}")
+        except OSError:
+            continue
+        if link.startswith("socket:[") and link[8:-1] in listening:
+            ours = True
+if ours:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(3)
+    try:
+        s.connect(path)
+        s.sendall(b'{"quit": true}')
+        s.shutdown(socket.SHUT_WR)
+        s.recv(1)                   # the app closes the connection once it has read it
+        print("quit")
+    except OSError:
+        pass
+PY
+)
+
+uninstall() {
+  local purge=$1 pids py sent ext_known=0 ext_off=0 dir
+  # ------------------------------------------------------------------ the app
+  pids=$(app_pids)
+  py=$(stdlib_py) || py=""
+  if [ -n "$pids" ]; then
+    sent=""
+    # shellcheck disable=SC2086
+    [ -z "$py" ] || sent=$("$py" -I -c "$SOCKET_PY" quit $pids 2>/dev/null </dev/null || true)
+    if [ "$sent" = quit ]; then
+      say "Quitting DragShift"
+    else
+      say "Stopping DragShift"
+      # shellcheck disable=SC2086
+      kill $pids 2>/dev/null || true
+    fi
+    # shellcheck disable=SC2086
+    if ! wait_gone 50 $pids && [ "$sent" = quit ]; then
+      kill $pids 2>/dev/null || true             # it didn't quit: SIGTERM, like an update
+      wait_gone 50 $pids || true
+    fi
+    # shellcheck disable=SC2086
+    if alive $pids; then
+      kill -KILL $pids 2>/dev/null || true
+      wait_gone 20 $pids || warn "DragShift is still running (pid ${pids//$'\n'/ }): quit it from its top-bar icon."
+    fi
+  fi
+  if [ -n "$py" ]; then
+    local stale
+    stale=$("$py" -I -c "$SOCKET_PY" stale 2>/dev/null </dev/null || true)
+    [ -z "$stale" ] || { info "removed $stale"; REMOVED=$((REMOVED + 1)); }
+  fi
+
+  # ------------------------------------------------------------------ shell extension
+  # Taking the UUID out of enabled-extensions is what `gnome-extensions disable` does, and
+  # the shell switches the extension off at once; unlike that command, it doesn't leave the
+  # UUID in disabled-extensions. Every other extension in both lists stays as it is.
+  if have gnome-extensions && gnome-extensions info "$UUID" >/dev/null 2>&1 </dev/null; then
+    ext_known=1
+  fi
+  if have gsettings && [ -n "$py" ] \
+      && gsettings get org.gnome.shell enabled-extensions >/dev/null 2>&1 </dev/null; then
+    local keys
+    keys=$("$py" -I - "$UUID" 2>/dev/null <<'PY'
+import ast, subprocess, sys
+uuid = sys.argv[1]
+for key in ("enabled-extensions", "disabled-extensions"):
+    out = subprocess.run(["gsettings", "get", "org.gnome.shell", key], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    out = out[4:] if out.startswith("@as ") else out
+    now = list(ast.literal_eval(out)) if out else []
+    if uuid in now:
+        subprocess.run(["gsettings", "set", "org.gnome.shell", key,
+                        repr([u for u in now if u != uuid])], check=True)
+        print(key)
+PY
+    ) || warn "Couldn't take $UUID out of GNOME's enabled-extensions: remove it with the Extensions app."
+    case $keys in
+      *enabled-extensions*)
+        info "turned the extension $UUID off"
+        ext_off=1
+        REMOVED=$((REMOVED + 1)) ;;
+    esac
+  elif [ "$ext_known" = 1 ]; then
+    if gnome-extensions disable "$UUID" </dev/null 2>/dev/null; then ext_off=1
+    else warn "Couldn't turn the extension $UUID off."; fi
+  fi
+  [ ! -e "$EXT_DIR" ] || ext_off=1
+  drop "$EXT_DIR"
+
+  # ------------------------------------------------------------------ desktop integration
+  if [ -e "$DESKTOP" ]; then
+    drop "$DESKTOP"
+    if [ -d "$APPS" ] && have update-desktop-database; then
+      update-desktop-database -q "$APPS" || warn "update-desktop-database failed: Open With may list DragShift until you log in again."
+    fi
+  fi
+  if [ -e "$ICON" ]; then
+    drop "$ICON"
+    if [ -f "$HICOLOR/icon-theme.cache" ] && have gtk-update-icon-cache; then
+      gtk-update-icon-cache -q -t -f "$HICOLOR" || true
+    elif [ -d "$HICOLOR" ]; then
+      touch "$HICOLOR"
+    fi
+  fi
+  for dir in "${SCRIPT_DIRS[@]}"; do
+    drop "$dir/$SCRIPT_NAME"
+  done
+  drop "$AUTOSTART"
+  if [ -e "$LAUNCHER" ] && ! grep -q -- '-m dragshift' "$LAUNCHER" 2>/dev/null; then
+    warn "Kept $LAUNCHER: it isn't DragShift's launcher."
+  else
+    drop "$LAUNCHER"
+  fi
+
+  # ------------------------------------------------------------------ the app's files
+  drop "$VENV" "$SRC" "$DATA/src.new" "$DATA/src.old"
+  if [ -d "$DATA" ] && [ ! -L "$DATA" ]; then
+    if rmdir -- "$DATA" 2>/dev/null; then
+      info "removed $DATA"
+      REMOVED=$((REMOVED + 1))
+    else
+      warn "Kept $DATA: it holds files the installer didn't put there."
+    fi
+  fi
+  if [ "$purge" = 1 ]; then
+    drop "$CONFIG_HOME/DragShift" "$STATE_HOME/DragShift" "$CACHE_HOME/DragShift" \
+         "$HOME/snap/libreoffice/common/DragShift"
+  fi
+
+  if [ "$REMOVED" = 0 ]; then
+    printf '✓ Nothing to remove: DragShift is not installed for this user.\n'
+  else
+    printf '✓ DragShift is uninstalled.\n'
+  fi
+  if [ "$ext_known" = 1 ] && [ "$ext_off" = 1 ]; then
+    info "GNOME Shell has switched the extension off; it forgets it completely at your next login."
+  fi
+  if [ "$purge" != 1 ]; then
+    local kept=()
+    for dir in "$CONFIG_HOME/DragShift" "$STATE_HOME/DragShift"; do
+      [ ! -e "$dir" ] || kept+=("$dir")
+    done
+    if [ ${#kept[@]} -gt 0 ]; then
+      info "Kept your settings and log: ${kept[*]}"
+      info "To remove them too, run this again with --uninstall --purge."
+    fi
+  fi
+}
+
 main() {
-  local from_dir="" autostart="" start=1 uninstall=0
+  local from_dir="" autostart="" start=1 uninstall=0 purge=0 install_opts=0
   while [ $# -gt 0 ]; do
     case $1 in
-      --no-autostart) autostart=off ;;
-      --autostart) autostart=on ;;
-      --no-start) start=0 ;;
-      --from-dir) [ $# -ge 2 ] || die "--from-dir needs a folder"; from_dir=$2; shift ;;
-      --from-dir=*) from_dir=${1#*=} ;;
+      --no-autostart) autostart=off; install_opts=1 ;;
+      --autostart) autostart=on; install_opts=1 ;;
+      --no-start) start=0; install_opts=1 ;;
+      --from-dir) [ $# -ge 2 ] || die "--from-dir needs a folder"; from_dir=$2; install_opts=1; shift ;;
+      --from-dir=*) from_dir=${1#*=}; install_opts=1 ;;
       --uninstall) uninstall=1 ;;
+      --purge) purge=1 ;;
       -h|--help) usage; exit 0 ;;
       *) die "Unknown option: $1 (see --help)" ;;
     esac
@@ -97,10 +370,20 @@ main() {
 
   [ "$(uname -s)" = Linux ] || die "This installer is for Linux. On a Mac use install-mac.sh."
   [ "$(id -u)" -ne 0 ] || die "Run this as your normal user, without sudo: DragShift installs into your home folder."
-  [ -d "${HOME:-}" ] || die "HOME is not set to a folder."
+  [ "$purge" = 0 ] || [ "$uninstall" = 1 ] || die "--purge goes with --uninstall: --uninstall --purge"
+  [ "$uninstall" = 0 ] || [ "$install_opts" = 0 ] || die "--uninstall takes no install options (only --purge)."
+  [ -n "${HOME:-}" ] || die "HOME is not set."
+  check_base HOME "$HOME"
+  [ -d "$HOME" ] || die "HOME ($HOME) is not a folder."
 
   DATA_HOME=$(xdg_dir "${XDG_DATA_HOME:-}" "$HOME/.local/share")
   CONFIG_HOME=$(xdg_dir "${XDG_CONFIG_HOME:-}" "$HOME/.config")
+  STATE_HOME=$(xdg_dir "${XDG_STATE_HOME:-}" "$HOME/.local/state")
+  CACHE_HOME=$(xdg_dir "${XDG_CACHE_HOME:-}" "$HOME/.cache")
+  check_base XDG_DATA_HOME "$DATA_HOME"
+  check_base XDG_CONFIG_HOME "$CONFIG_HOME"
+  check_base XDG_STATE_HOME "$STATE_HOME"
+  check_base XDG_CACHE_HOME "$CACHE_HOME"
   DATA=$DATA_HOME/dragshift
   VENV=$DATA/venv
   SRC=$DATA/src
@@ -118,19 +401,8 @@ main() {
   [ "$HOME/.local/share" = "$DATA_HOME" ] || SCRIPT_DIRS+=("$HOME/.local/share/nautilus/scripts")
 
   if [ "$uninstall" = 1 ]; then
-    cat >&2 <<EOF
-✗ --uninstall is not available yet (it comes with https://github.com/eteen12/DragShift/issues/67).
-  To remove DragShift by hand, quit it (top-bar icon → Quit) and delete:
-    $LAUNCHER
-    $DATA
-    $DESKTOP
-    $ICON
-$(for d in "${SCRIPT_DIRS[@]}"; do printf '    %s\n' "$d/$SCRIPT_NAME"; done)
-    $EXT_DIR  (or: gnome-extensions uninstall $UUID)
-    $AUTOSTART
-  Your settings ($CONFIG_HOME/DragShift) are kept.
-EOF
-    exit 2
+    uninstall "$purge"
+    return 0
   fi
 
   # ------------------------------------------------------------------ what we need
@@ -223,17 +495,14 @@ EOF
 
   # A running DragShift of this install has the old code loaded: stop it, start it again
   # at the end.
-  local pids="" restart=0
-  have pgrep && pids=$(pgrep -u "$(id -u)" -f "^$(printf '%s' "$VENV" | sed 's/[][\.*^$+?(){}|]/\\&/g')/bin/python3? -m dragshift( |$)" || true)
+  local pids restart=0
+  pids=$(app_pids)
   if [ -n "$pids" ]; then
     say "Stopping the running DragShift"
     # shellcheck disable=SC2086
     kill $pids 2>/dev/null || true
-    for _ in $(seq 50); do
-      # shellcheck disable=SC2086
-      kill -0 $pids 2>/dev/null || break
-      sleep 0.1
-    done
+    # shellcheck disable=SC2086
+    wait_gone 50 $pids || true
     restart=1
   fi
 

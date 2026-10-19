@@ -234,6 +234,48 @@ def test_python_m_dragshift_hands_over_before_importing_qt(runtime, tmp_path):
         fake.close()
 
 
+@pytest.mark.parametrize("linux", [True, False])
+def test_quit_request(runtime, monkeypatch, linux):
+    """{"quit": true}, which install-linux.sh --uninstall sends (#67), makes the app's IPC
+    handler quit the QApplication like tray → Quit, and close the connection so the sender
+    knows. Only on Linux: Windows and macOS handle their payloads as before."""
+    _qapp()
+    from types import SimpleNamespace
+    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtNetwork import QLocalServer
+    from dragshift import app
+    monkeypatch.setattr(app, "IS_LINUX", linux)
+    calls = []
+    fake = SimpleNamespace(qapp=SimpleNamespace(quit=lambda: calls.append("quit")),
+                           queue_files=lambda f: calls.append(("files", f)),
+                           show_requested=lambda: calls.append("show"))
+    QLocalServer.removeServer(handoff.ipc_name())
+    fake.server = QLocalServer()
+    assert fake.server.listen(handoff.ipc_name()), fake.server.errorString()
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(0.05)
+    try:
+        client.connect(handoff.socket_path())
+        client.sendall(b'{"quit": true}')
+        client.shutdown(socket.SHUT_WR)
+        assert fake.server.waitForNewConnection(3000)
+        app.DragShiftApp._ipc(fake)
+        closed = False
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline and not (calls and closed):
+            QCoreApplication.processEvents()
+            try:
+                closed = closed or client.recv(1) == b""
+            except socket.timeout:
+                pass
+        assert calls == (["quit"] if linux else [])
+        if linux:
+            assert closed
+    finally:
+        client.close()
+        fake.server.close()
+
+
 # ------------------------------------------------------------------ packaging/linux
 def _entry() -> configparser.SectionProxy:
     cp = configparser.ConfigParser(interpolation=None, delimiters=("=",))

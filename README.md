@@ -31,7 +31,7 @@ Open the .dmg and drag **DragShift** into Applications. DragShift lives in the m
 curl -fsSL https://raw.githubusercontent.com/eteen12/DragShift/main/install-linux.sh | bash
 ```
 
-It installs DragShift for your user only, with no sudo: the app, an app grid entry, **Open With → DragShift**, Files' right-click **Scripts → DragShift…**, the small GNOME Shell extension that Shift+drag needs on Wayland, and start at login ([see what it does](install-linux.sh)). Afterwards, **log out and back in once** so GNOME loads the extension. Run the same line again to update. To skip start at login, end the line with `bash -s -- --no-autostart`. If system packages are missing, it prints the `sudo apt install …` line to run first.
+It installs DragShift for your user only, with no sudo: the app, an app grid entry, **Open With → DragShift**, Files' right-click **Scripts → DragShift…**, the small GNOME Shell extension that Shift+drag needs on Wayland, and start at login ([see what it does](install-linux.sh)). Afterwards, **log out and back in once** so GNOME loads the extension. Run the same line again to update. To skip start at login, end the line with `bash -s -- --no-autostart`. If system packages are missing, it prints the `sudo apt install …` line to run first. To uninstall, end the line with `bash -s -- --uninstall`. That keeps your settings; add `--purge` to remove them too.
 
 > **First launch on Windows:** SmartScreen may warn because the app isn't code-signed yet. Click **More info → Run anyway**.
 >

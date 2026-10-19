@@ -1,7 +1,8 @@
 """install-linux.sh (#66) without a GNOME session: options, the system package check and
 the quoting helpers. Each run gets a temporary HOME and XDG dirs and no session bus or
 display, and every case here stops before anything is installed. The installs
-themselves run in the isolated session (tests/linux/test_install.py)."""
+themselves run in the isolated session (tests/linux/test_install.py); --uninstall is in
+tests/test_uninstall_script.py and tests/linux/test_uninstall.py."""
 import os
 import re
 import shutil
@@ -65,7 +66,8 @@ def fake_dpkg(tmp_path, env, missing: set[str]) -> None:
 def test_help(env):
     r = run(env, "--help")
     assert r.returncode == 0, r.stderr
-    for opt in ("--no-autostart", "--autostart", "--no-start", "--from-dir", "--uninstall"):
+    for opt in ("--no-autostart", "--autostart", "--no-start", "--from-dir", "--uninstall",
+                "--purge"):
         assert opt in r.stdout
     assert ONE_LINER in r.stdout
     assert created(env) == []
@@ -74,21 +76,6 @@ def test_help(env):
 def test_unknown_option(env):
     r = run(env, "--frobnicate")
     assert r.returncode == 1 and "Unknown option: --frobnicate" in r.stderr
-    assert created(env) == []
-
-
-def test_uninstall_is_a_stub_that_says_what_to_remove(env):
-    r = run(env, "--uninstall")
-    assert r.returncode == 2
-    assert "issues/67" in r.stderr
-    data = env["XDG_DATA_HOME"]
-    for path in (f"{env['HOME']}/.local/bin/dragshift", f"{data}/dragshift",
-                 f"{data}/applications/io.github.eteen12.DragShift.desktop",
-                 f"{data}/nautilus/scripts/DragShift…",
-                 f"{env['HOME']}/.local/share/nautilus/scripts/DragShift…",
-                 f"{data}/gnome-shell/extensions/dragshift@eteen12.github.io",
-                 f"{env['XDG_CONFIG_HOME']}/autostart/dragshift.desktop"):
-        assert path in r.stderr
     assert created(env) == []
 
 

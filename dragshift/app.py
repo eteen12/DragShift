@@ -238,6 +238,12 @@ class DragShiftApp(QObject):
             except Exception:
                 return  # incomplete: wait for more
             done["v"] = True
+            if IS_LINUX and data.get("quit"):  # install-linux.sh --uninstall (#67)
+                log_line("ipc: quit requested")
+                sock.disconnectFromServer()
+                sock.deleteLater()
+                QTimer.singleShot(0, self.qapp.quit)  # as tray → Quit
+                return
             files = [f for f in data.get("files", []) if os.path.exists(f)]
             print(f"IPC: {len(files)} file(s) handed over", flush=True)
             if files:
