@@ -179,10 +179,14 @@ def test_first_activation_after_boot_keeps_focus():
 
 
 @gnome
-def test_list_windows_is_empty_without_windows():
-    """Plain GNOME mode: no DING desktop window, no apps -> [] rather than an error."""
+def test_list_windows_is_empty_without_windows(monkeypatch):
+    """Plain GNOME 'user' mode without Ubuntu's extensions (so no DING desktop window) and
+    no apps: ListWindows returns [] rather than an error."""
     require_session_tools()
-    with Session(helper=True, shell_args=["--mode=user"]) as s, ShellHelper(s) as shell:
+    monkeypatch.setattr(session_mod, "ubuntu_mode", lambda: False)
+    monkeypatch.setattr(session_mod, "UBUNTU_DEFAULT_EXTENSIONS", ())
+    with Session(helper=True) as s, ShellHelper(s) as shell:
+        assert s.mode == "user"
         assert shell.list_windows() == []
 
 

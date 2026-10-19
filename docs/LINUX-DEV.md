@@ -112,3 +112,42 @@ uv run python -m tests.linux.session --helper -- gdbus call --session \
   --dest io.github.eteen12.DragShiftTest --object-path /io/github/eteen12/DragShiftTest \
   --method io.github.eteen12.DragShiftTest.ListWindows
 ```
+
+### The same tests in Docker (CI parity)
+
+`tests/linux/docker/run.sh` builds an `ubuntu:24.04` image with GNOME Shell 46, Xwayland,
+Nautilus, Ubuntu's dock, AppIndicator and DING extensions, AT-SPI, Python 3.12 and uv, then
+runs `pytest -m gnome tests/linux` inside it through the same launcher. The repo is mounted
+read-only and the Python packages live in the image, so rebuild after changing
+`requirements.txt` (the script always runs `docker build`; unchanged layers are cached).
+Extra arguments go to pytest. GL is software (llvmpipe): no `/dev/dri`, no `--privileged`.
+The host session above stays the main way to test; the image is for CI and for checking
+that nothing depends on this machine.
+
+```sh
+tests/linux/docker/run.sh                                     # gnome tests in the image
+tests/linux/docker/run.sh -k nautilus -v                      # pytest arguments
+DOCKER_BUILD_ARGS="--build-arg WITH_LIBREOFFICE=1" tests/linux/docker/run.sh   # + LibreOffice
+```
+
+Without `yaru-theme-gnome-shell` (or on another distro) the launcher boots GNOME's
+`user` mode instead of `--mode=ubuntu` and enables the installed Ubuntu default extensions
+itself, so both paths give the same desktop.
+
+## DOCX → PDF and LibreOffice
+
+On Linux, DOCX → PDF uses LibreOffice when it is installed (`soffice` or `libreoffice` on
+`PATH`, the snap at `/snap/bin/libreoffice`, or the flatpak `org.libreoffice.LibreOffice`) and
+falls back to the built-in renderer otherwise. Each conversion runs headless with a throwaway
+profile and a copy of the source, in `~/snap/<snap>/common/DragShift/` for the snap (it can't
+use `/tmp` or hidden folders such as `~/.cache`) and in `$XDG_CACHE_HOME/DragShift/soffice/`
+otherwise. The per-conversion folder is removed afterwards; your own LibreOffice profile is
+never used.
+
+The unit tests hide an installed LibreOffice from every test except `tests/test_soffice.py`.
+The tests marked `libreoffice` run the real one (about 10 s with the snap) and are skipped when
+it is missing. To leave them out:
+
+```sh
+.venv/bin/python -m pytest -q -m "not libreoffice"
+```

@@ -53,6 +53,9 @@ class Settings:
 
 # ---------------------------------------------------------------- autostart
 def launch_command() -> str:
+    if IS_LINUX:
+        from . import platform_linux
+        return platform_linux.launch_command()
     if getattr(sys, "frozen", False):
         return f'"{sys.executable}" --quiet'
     return f'"{sys.executable}" -m dragshift --quiet'
@@ -159,8 +162,10 @@ class SettingsWindow(GlassWindow):
         grid.addWidget(self.dpi, r, 1)
         r += 1
 
-        if IS_WIN or IS_MAC:
-            self.auto = QCheckBox("Start DragShift with Windows" if IS_WIN else "Open DragShift at login")
+        if IS_WIN or IS_MAC or IS_LINUX:
+            self.auto = QCheckBox("Start DragShift with Windows" if IS_WIN
+                                  else "Start DragShift when you log in" if IS_LINUX
+                                  else "Open DragShift at login")
             self.auto.setChecked(autostart_enabled())
             self.auto.toggled.connect(set_autostart)
             grid.addWidget(self.auto, r, 1)
@@ -196,7 +201,9 @@ class WelcomeWindow(GlassWindow):
         super().__init__("Welcome to DragShift", size=(560, 430))
         self.s = settings
         steps = [
-            ("1", "Start dragging any file", "in Finder or on the desktop" if IS_MAC else "in File Explorer or on the desktop"),
+            ("1", "Start dragging any file", "in Finder or on the desktop" if IS_MAC
+                                            else "in Files or on the desktop" if IS_LINUX
+                                            else "in File Explorer or on the desktop"),
             ("2", f"Press {trigger_label}", "the glass menu opens right under your cursor"),
             ("3", "Drop it on a slice", "the result is saved next to the original"),
             ("⇄", f"Tap {trigger_label} again", "to switch between Convert and Tools"),
@@ -233,8 +240,10 @@ class WelcomeWindow(GlassWindow):
                 b.clicked.connect(platform_mac.request_screen_recording)
                 self.body.addWidget(b, 0, Qt.AlignLeft)
         foot = QHBoxLayout()
-        if IS_WIN or IS_MAC:
-            self.auto = QCheckBox("Start with Windows" if IS_WIN else "Open at login")
+        if IS_WIN or IS_MAC or IS_LINUX:
+            self.auto = QCheckBox("Start with Windows" if IS_WIN
+                                  else "Start when you log in" if IS_LINUX
+                                  else "Open at login")
             self.auto.setChecked(True)
             foot.addWidget(self.auto)
         foot.addStretch(1)
@@ -246,6 +255,6 @@ class WelcomeWindow(GlassWindow):
 
     def _done(self):
         self.s.set("welcomed", True)
-        if IS_WIN or IS_MAC:
+        if IS_WIN or IS_MAC or IS_LINUX:
             set_autostart(self.auto.isChecked())
         self.close()

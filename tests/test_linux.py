@@ -39,13 +39,9 @@ def test_import_needs_no_dbus_libraries():
 
 @linux_only
 def test_fallbacks_keep_todays_linux_behaviour(qapp, monkeypatch, tmp_path):
-    import os
-    from dragshift import glass, settings, toasts
+    from dragshift import glass, toasts
     assert glass.exclude_from_capture(0) is False
     assert glass.grab_screen(0, 0, 40, 30).size == (40, 30)          # Qt's grab, as before
-    assert settings.autostart_enabled() is False
-    settings.set_autostart(True)
-    assert not (Path(os.environ["XDG_CONFIG_HOME"]) / "autostart").exists()
     spawned = []
     monkeypatch.setattr(toasts.subprocess, "Popen", lambda cmd, *a, **k: spawned.append(cmd))
     toasts.reveal(tmp_path / "out.png")
@@ -213,8 +209,9 @@ def test_grab_screen_falls_back_to_wallpaper(qapp, lx, monkeypatch):
 
 
 @linux_only
-def test_grab_screen_qt_only_when_self_needs_no_excluding(qapp, lx):
+def test_grab_screen_qt_only_when_self_needs_no_excluding(qapp, lx, monkeypatch):
     from dragshift import glass
+    monkeypatch.setattr(lx, "wallpaper_crop", lambda *a: None)   # e.g. not a GNOME desktop
     im = glass.grab_screen(0, 0, 40, 30)              # fallbacks: no capture, no wallpaper
     assert im is not None and im.size == (40, 30) and glass.LAST_SOURCE == ""
     assert glass.grab_screen(0, 0, 40, 30, below_window=1) is None
