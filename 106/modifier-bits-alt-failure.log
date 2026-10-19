@@ -1,0 +1,25 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________________________ test_modifier_bits[Alt_L-8] __________________________
+
+shell = <tests.linux.shell.ShellHelper object at 0x758bb7afeb10>
+client = <module 'dragshift.platform_linux' from '/home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/session-reliability/dragshift/platform_linux.py'>
+key = 'Alt_L', bit = 8
+
+    @gnome
+    @pytest.mark.parametrize("key, bit", [("Shift_L", lx.SHIFT_MASK), ("Shift_R", lx.SHIFT_MASK),
+                                          ("Control_L", lx.CONTROL_MASK), ("Alt_L", lx.MOD1_MASK)])
+    def test_modifier_bits(shell, client, key, bit):
+        inject.move(shell, 321, 210)
+        with inject.hold_key(shell, key):
+            assert client.pointer_state() == (321, 210, False, bit)
+>       assert client.pointer_state() == (321, 210, False, 0)
+E       assert (321, 210, False, 8) == (321, 210, False, 0)
+E         
+E         At index 3 diff: 8 != 0
+E         Use -v to get more diff
+
+tests/linux/test_pointer.py:216: AssertionError
+=========================== short test summary info ============================
+FAILED tests/linux/test_pointer.py::test_modifier_bits[Alt_L-8] - assert (321...
+1 failed in 3.83s

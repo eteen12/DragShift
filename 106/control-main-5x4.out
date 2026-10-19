@@ -1,0 +1,21 @@
+r0p0 ok=True t=3.99 
+r0p1 ok=True t=3.93 
+r0p2 ok=True t=4.34 
+r0p3 ok=True t=4.17 
+r1p0 ok=True t=3.88 
+r1p1 ok=True t=4.56 
+r1p2 ok=True t=4.45 
+r1p3 ok=False t=17.81 HelperError: test helper not ready after 15 s: Version: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name io.github.eteen12.DragShiftTest was not 
+r2p0 ok=True t=4.41 
+r2p1 ok=False t=17.68 HelperError: test helper not ready after 15 s: Version: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name io.github.eteen12.DragShiftTest was not 
+r2p2 ok=True t=4.09 
+r2p3 ok=True t=4.33 
+r3p0 ok=True t=4.22 
+r3p1 ok=True t=4.1 
+r3p2 ok=True t=4.05 
+r3p3 ok=False t=17.37 HelperError: test helper not ready after 15 s: Version: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name io.github.eteen12.DragShiftTest was not 
+r4p0 ok=True t=5.03 
+r4p1 ok=True t=5.04 
+r4p2 ok=True t=4.36 
+r4p3 ok=True t=5.46 
+TOTAL ok=17 fail=3
