@@ -22,8 +22,8 @@ from PIL import Image, ImageChops, ImageDraw
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import dragshift.convert  # noqa: E402,F401  (HEIC support for verifiers)
-from e2e_windows import (make_files, img_ok, pdf_pages, v_format, v_pages_to_images,  # noqa: E402
-                         v_combined, v_pdf_n, v_rotated, v_pdf_compress, v_merged)
+from e2e_common import (make_files, img_ok, pdf_pages, v_format, v_pages_to_images,  # noqa: E402
+                        v_combined, v_pdf_n, v_rotated, v_pdf_compress, v_merged)
 
 OUT = ROOT / "e2e_mac_out"
 (OUT / "shots").mkdir(parents=True, exist_ok=True)
