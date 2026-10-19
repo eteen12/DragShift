@@ -521,6 +521,35 @@ uv run pytest tests/test_click_mode.py                        # offscreen, exten
 uv run pytest -s tests/linux/test_click_mode.py               # real app, scale 1 and 2
 ```
 
+### Drops onto the menu
+
+A Shift+drag from Files or the desktop opens the menu under the pointer. The file then
+enters it, and the drop on a petal runs that action (`activated` → `run_item`). The
+result is written next to the original (#35).
+
+- **Paths.** They are read from `text/uri-list` when the drag enters, because the
+  desktop's drop can arrive without a payload. `QUrl.toLocalFile` decodes the
+  percent-encoding, so names with spaces, `#`, `%` or non-ASCII letters arrive intact.
+  URIs that are not local files (`sftp://`, `smb://`, `https://`) are ignored. A drag
+  that has only those is refused.
+- **Copy, never Move.** The source app proposes Copy or Move. Files proposed
+  `MoveAction` in about half of the measured Shift+drags, and the desktop proposed
+  `CopyAction`. Both offer Copy, and the menu answers `CopyAction` on enter, move and
+  drop, so the original stays where it is, unchanged. On Linux the drop is logged as
+  `menu: dropped N file(s) on <petal> (<ring>), proposed …, answered CopyAction`.
+- **Beside the petals** (the corners, the hub) the drop is refused and the menu closes.
+  The same happens for a file type that has no petals. Nothing runs.
+- **Rings.** A Shift tap flips the ring through the watcher (`pointer_state()`), since
+  Qt never sees Shift during a drag. Resting on the hub for 420 ms flips it too, but only
+  after the pointer has moved onto a petal. On GNOME the menu is clamped to the work
+  area, and desktop icons sit at the right edge, so the file often enters on a petal.
+  That petal does not count as a visit.
+
+```sh
+uv run pytest tests/test_menu_drop.py                         # offscreen, synthetic drops
+uv run pytest -s tests/linux/test_menu_drop.py                # real drags from Files and the desktop
+```
+
 ### Screen capture (`CaptureArea`)
 
 `platform_linux.capture(x, y, w, h)` returns the screen under a rect as a PIL RGB image of
@@ -559,4 +588,34 @@ both inside the session:
 
 ```sh
 uv run pytest tests/linux/test_capture_exclude.py -s   # own windows over Files; timings
+```
+
+#### Glass windows and toasts: where they are, and live refresh (#40)
+
+Under Wayland a client is never told where its windows are: Qt's `frameGeometry()` is
+only what it asked for (`(0, 0)` for a window Mutter placed), so a backdrop captured there
+shows the wrong part of the screen.
+
+- **Toasts** are placed by the app (`PlaceWindow`), so `ToastCard.stage_rect()` is the
+  top-left it last asked for. The backdrop is captured before the card shows and again,
+  with DragShift's windows left out, after it slides into a new slot.
+- **Glass windows** (Settings, Welcome, the tools) are placed by Mutter and moved by the
+  user with a system move, which sends the app no event. `GlassWindow` asks the extension
+  where its frame is: `GetOwnWindowFrame(s title) -> (b mapped, iiii frame)` (client
+  `platform_linux.window_frame`). It looks only among the caller's own windows (by pid,
+  like `CaptureAreaExcludingCaller`), so glass window titles are unique per process
+  (`Crop Image (2) — DragShift`). The window polls it every 100 ms while shown (about
+  0.4 ms a call), backing off to 1.6 s while it is unknown. The first answer captures the
+  backdrop; a change, a resize or coming back to the window refreshes it 140 ms after it
+  settles. Each refresh is logged as `liquid: refreshed WxH at (x, y) from capture: ...`.
+- Without the extension both use the painted frost and nothing is polled or captured.
+
+A refresh runs `gc.collect()`, the capture (both on the GUI thread) and the render (a pool
+thread). On this machine: about 15 ms, 35 ms (scale 1) or 150 ms (scale 2), and 80 ms for
+an 820x680 window. `tests/linux/glass_app.py` runs the real `CropWindow` and `ToastStack`
+in one process inside the session and records every capture, so the test can compare each
+backdrop with the screen behind the window:
+
+```sh
+uv run pytest tests/test_window_glass.py tests/linux/test_window_glass.py -s   # scale 1 and 2; prints timings
 ```

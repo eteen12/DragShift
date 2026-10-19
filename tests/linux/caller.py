@@ -30,6 +30,7 @@ PROTECTED = {
     "WatchEscape": ("b", (False,)),
     "PlaceWindow": ("sii", ("no such window", 0, 0)),
     "GetWorkArea": ("ii", (0, 0)),
+    "GetOwnWindowFrame": ("s", ("no such window",)),
     # no ~/.local/bin/dragshift in these sessions: answers False, starts nothing
     "Launch": ("b", (True,)),
 }
