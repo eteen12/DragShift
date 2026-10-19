@@ -346,6 +346,10 @@ class LiquidBacking(QObject):
         pil = grab_screen(rect.x(), rect.y(), rect.width(), rect.height(), below)
         if pil is None:
             return
+        self._render(pil, rect)
+
+    def _render(self, pil, rect: QRect):
+        """Start the liquid render of `pil` (what is behind `rect`) on a pool thread."""
         self._serial += 1
         job = _LiquidJob(self._serial, pil, rect.width(), rect.height(), self.radius, self.style)
         from .util import keep, release
@@ -376,35 +380,126 @@ class LiquidBacking(QObject):
     # where it is. A window that knows its place on screen says so with stage_rect()
     # (toasts: where the extension put them; glass windows: asked from the extension),
     # None while unknown.
-    _refresh = None     # (serial, rect, start, capture ms, gc ms, source) of the last one
+    #
+    # The capture itself (a D-Bus call that waits for the shell to paint and PNG-encode
+    # the rect, plus the decode: 35-55 ms for an 820x680 window at scale 1, 150-280 ms at
+    # 200 %) runs on a pool thread (#107), and the image comes back through _CaptureRelay.
+    # Each refresh has a serial: a capture that a newer refresh has overtaken is dropped
+    # (and skipped when it hasn't started yet).
+    _refresh = None     # (render serial, rect, start, capture ms, gc ms, source, GUI ms)
+    _pending = None     # (capture serial, rect, start, GUI ms so far) while capturing
 
     def _refresh_linux(self):
         import gc
         import time
+        import weakref
+        t0 = time.perf_counter()
         locate = getattr(self.w, "stage_rect", None)
         rect = locate() if locate is not None else self.w.frameGeometry()
         if rect is None or rect.isEmpty():
             return
-        t0 = time.perf_counter()
+        if not hasattr(self, "_wanted"):
+            self._wanted = [0]          # a plain list: the pool thread reads it too
+        self._wanted[0] += 1
+        job = (weakref.ref(self), self._wanted[0], self._wanted, rect.getRect())
+        _relay()                        # made here, on the GUI thread
+        # The capture runs Python on a pool thread, so it could set off the cyclic GC
+        # there (#88). It makes fewer than 100 tracked objects; emptying the youngest
+        # generation first (well under 1 ms) leaves it far from the threshold.
+        gc.collect(0)
+        QThreadPool.globalInstance().start(lambda: _capture_job(*job))
+        self._pending = (self._wanted[0], QRect(rect), t0, (time.perf_counter() - t0) * 1e3)
+
+    def _captured(self, serial: int, pil, capture_ms: float):
+        """GUI thread: the capture of refresh `serial` is here (None: no answer)."""
+        import gc
+        import time
+        global LAST_SOURCE
+        pending = self._pending
+        if pending is None or pending[0] != serial:
+            return                      # overtaken by a newer refresh
+        self._pending = None
+        if not (self.excluded and self.w.isVisible()) or self._debounce.isActive():
+            return                      # hidden meanwhile, or a newer refresh is due
+        t1 = time.perf_counter()
+        _, rect, t0, gui_ms = pending
+        LAST_SOURCE = "capture"
+        if pil is None:                 # no answer: the wallpaper (asks Qt, so not on the pool)
+            from . import platform_linux
+            LAST_SOURCE = "wallpaper"
+            pil = platform_linux.wallpaper_crop(rect.x(), rect.y(), rect.width(), rect.height())
+            if pil is None:
+                LAST_SOURCE = ""
+                return
+        if pil.size != (rect.width(), rect.height()):
+            pil = pil.resize((rect.width(), rect.height()))
         # A render runs Python on a pool thread; cyclic garbage holding Qt objects must
         # not be freed there (#88). Refreshes are rare (a move or resize has settled), so
         # collect it here, on the GUI thread, first.
+        t2 = time.perf_counter()
         gc.collect()
-        t1 = time.perf_counter()
-        serial = self._serial
-        self.capture_at(rect)
-        if self._serial != serial:      # a render was started
-            self._refresh = (self._serial, QRect(rect), t0, (time.perf_counter() - t1) * 1e3,
-                             (t1 - t0) * 1e3, LAST_SOURCE)
+        t3 = time.perf_counter()
+        self._render(pil, rect)
+        gui_ms += (time.perf_counter() - t1) * 1e3
+        self._refresh = (self._serial, rect, t0, capture_ms, (t3 - t2) * 1e3, LAST_SOURCE,
+                         gui_ms)
 
     def _log_refresh(self):
         import time
-        serial, r, t0, capture_ms, gc_ms, source = self._refresh
+        serial, r, t0, capture_ms, gc_ms, source, gui_ms = self._refresh
         self._refresh = None
         from .app import log_line
         log_line(f"liquid: refreshed {r.width()}x{r.height()} at ({r.x()}, {r.y()}) from "
-                 f"{source or 'qt'}: gc {gc_ms:.1f} ms, capture {capture_ms:.1f} ms, "
-                 f"total {(time.perf_counter() - t0) * 1e3:.1f} ms")
+                 f"{source or 'qt'}: capture {capture_ms:.1f} ms (pool thread), GUI thread "
+                 f"{gui_ms:.1f} ms (gc {gc_ms:.1f} ms), total "
+                 f"{(time.perf_counter() - t0) * 1e3:.1f} ms")
+
+
+# ---------------------------------------------------------------- Linux: refresh capture (#107)
+class _CaptureRelay(QObject):
+    """Brings a capture made on a pool thread back to the GUI thread (a queued signal).
+    There is one, made on the GUI thread and kept for the life of the app, so the pool
+    thread never makes or frees a Qt object (#85, #88): it only holds a weak reference
+    to the LiquidBacking, which the GUI thread resolves."""
+    captured = Signal(object, int, object, float)   # weakref, serial, PIL image | None, ms
+
+    def __init__(self):
+        super().__init__()
+        self.captured.connect(self._deliver, Qt.QueuedConnection)
+
+    def _deliver(self, ref, serial, pil, ms):
+        import shiboken6
+        backing = ref()
+        if backing is not None and shiboken6.isValid(backing):
+            backing._captured(serial, pil, ms)
+
+
+_RELAY: _CaptureRelay | None = None
+
+
+def _relay() -> _CaptureRelay:
+    global _RELAY
+    if _RELAY is None:
+        _RELAY = _CaptureRelay()
+    return _RELAY
+
+
+def _capture_job(ref, serial: int, wanted: list, rect: tuple[int, int, int, int]):
+    """Pool thread: what is behind `rect` with DragShift's windows left out, from the
+    shell extension (D-Bus call and PNG decode, on a connection of its own), handed to the
+    GUI thread. Plain Python and PIL only. Skipped when a newer refresh came first."""
+    import time
+    if wanted[0] != serial:
+        return
+    from . import platform_linux
+    t = time.perf_counter()
+    try:
+        pil = platform_linux.capture(*rect, exclude_self=True, worker=True)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        pil = None
+    _RELAY.captured.emit(ref, serial, pil, (time.perf_counter() - t) * 1e3)
 
 
 # ---------------------------------------------------------------- drag-image hiding
