@@ -24,6 +24,9 @@ for _var, _sub in (("XDG_CONFIG_HOME", "config"), ("XDG_STATE_HOME", "state"),
                    ("XDG_DATA_HOME", "data"), ("XDG_CACHE_HOME", "cache")):
     (_XDG_ROOT / _sub).mkdir()
     os.environ[_var] = str(_XDG_ROOT / _sub)
+# No real session bus: a D-Bus call from a test (e.g. Show in folder) must never reach the
+# user's desktop. Tests that need a bus start their own or use the isolated GNOME session.
+os.environ["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + str(_XDG_ROOT / "no-session-bus")
 
 
 def pytest_unconfigure(config):

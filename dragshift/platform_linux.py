@@ -55,6 +55,32 @@ def set_autostart(on: bool) -> None:
 
 
 def reveal(path: str | Path) -> bool:
-    """Show `path` selected in the file manager. False = not handled, caller falls back."""
-    return False
+    """Show `path` selected in the file manager (GNOME Files) through
+    org.freedesktop.FileManager1.ShowItems. False = not handled, caller falls back.
+
+    The call is asynchronous, so the UI never waits while D-Bus starts Files. If it fails
+    later (no FileManager1 service, timeout, …) the folder is opened with `xdg-open`."""
+    try:
+        from PySide6.QtCore import QCoreApplication
+        from PySide6.QtDBus import QDBusConnection, QDBusMessage, QDBusPendingCallWatcher
+    except ImportError:
+        return False
+    bus = QDBusConnection.sessionBus()
+    if not bus.isConnected():
+        return False
+    msg = QDBusMessage.createMethodCall("org.freedesktop.FileManager1",
+                                        "/org/freedesktop/FileManager1",
+                                        "org.freedesktop.FileManager1", "ShowItems")
+    msg.setArguments([[Path(path).absolute().as_uri()], ""])
+    # parented to the app, so the watcher outlives this call until the reply arrives
+    watcher = QDBusPendingCallWatcher(bus.asyncCall(msg, 10_000), QCoreApplication.instance())
+
+    def done(w):
+        if w.isError():
+            import subprocess
+            subprocess.Popen(["xdg-open", str(Path(path).parent)])
+        w.deleteLater()
+
+    watcher.finished.connect(done)
+    return True
 

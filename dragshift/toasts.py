@@ -2,7 +2,7 @@
 
 A card appears immediately while work runs (spinner), then turns into the result:
 thumbnail, what changed (e.g. "2.4 MB → 610 KB · 75% smaller") and actions:
-Open · Show in folder · Undo (moves the new files to the Recycle Bin)."""
+Open · Show in folder · Undo (moves the new files to the Recycle Bin / Trash)."""
 from __future__ import annotations
 
 import math
@@ -44,6 +44,9 @@ def open_file(path: str | Path):
 
 
 def trash(paths: list[Path]) -> int:
+    """Move the outputs to the Recycle Bin / Trash and return how many went. On Linux Qt uses
+    the freedesktop Trash ($XDG_DATA_HOME/Trash, or .Trash-$UID at the top of another
+    filesystem). Where no trash can take a file, it is deleted instead."""
     n = 0
     for p in paths:
         p = Path(p)
@@ -210,7 +213,7 @@ class ToastCard(QWidget):
             self.result = None
             self.thumb = None
             self.good = ""
-            bin_name = "Trash" if sys.platform == "darwin" else "Recycle Bin"
+            bin_name = "Recycle Bin" if sys.platform == "win32" else "Trash"
             self.info("Undone", f"Moved {n} file{'s' if n != 1 else ''} to the {bin_name}", 2500)
 
     # ------------------------------------------------------------ paint
