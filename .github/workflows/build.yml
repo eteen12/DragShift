@@ -14,6 +14,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 30   # backstop: a green job takes about 5 minutes
     steps:
       - uses: actions/checkout@v4
 
@@ -45,10 +46,19 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
+          $log = "$env:LOCALAPPDATA\DragShift\log.txt"
           foreach ($exe in @("dist\DragShift\DragShift.exe", "dist\DragShift.exe")) {
-            $p = Start-Process -FilePath $exe -ArgumentList "--selftest" -Wait -PassThru
-            if ($p.ExitCode -ne 0) { throw "Self-test failed for $exe ($($p.ExitCode))" }
-            "Self-test passed: $exe"
+            $p = Start-Process -FilePath $exe -ArgumentList "--selftest" -PassThru
+            $null = $p.Handle   # keeps ExitCode readable once the process exits
+            # A windowed exe that crashes shows a modal error dialog and never exits: bound the wait.
+            if (-not $p.WaitForExit(120000)) {
+              taskkill /F /T /PID $p.Id | Out-Null
+              $err = "Self-test timed out after 2 minutes for $exe (hung, or a crash dialog is open)"
+            } elseif ($p.ExitCode -ne 0) {
+              $err = "Self-test failed for $exe ($($p.ExitCode))"
+            } else { "Self-test passed: $exe"; continue }
+            if (Test-Path $log) { "--- $log"; Get-Content $log }
+            throw $err
           }
           "{0:N1} MB portable" -f ((Get-Item dist\DragShift.exe).Length / 1MB)
 
@@ -66,6 +76,7 @@ jobs:
 
       - name: Test the installer (silent install, run, uninstall)
         shell: pwsh
+        timeout-minutes: 5
         run: |
           $p = Start-Process dist\DragShift-Setup.exe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=contextmenu" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Install failed ($($p.ExitCode))" }
