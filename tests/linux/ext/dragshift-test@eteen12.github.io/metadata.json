@@ -1,7 +1,7 @@
 {
   "uuid": "dragshift-test@eteen12.github.io",
   "name": "DragShift test helper",
-  "description": "TEST ONLY. Screenshots and window listing over D-Bus for DragShift's isolated GNOME test session (tests/linux/session.py). Never install this on a real desktop.",
+  "description": "TEST ONLY. Screenshots, window listing and input injection over D-Bus for DragShift's isolated GNOME test session (tests/linux/session.py). Never install this on a real desktop.",
   "shell-version": ["46"],
   "url": "https://github.com/eteen12/DragShift",
   "version": 1

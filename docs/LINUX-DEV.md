@@ -85,13 +85,13 @@ The session never touches your real desktop:
   temporary directories. This also happens on Ctrl-C. A session whose launcher was
   SIGKILLed is cleaned up by the next start.
 
-### Test-helper extension (screenshots, window list)
+### Test-helper extension (screenshots, window list, input)
 
 GNOME 46 refuses `org.gnome.Shell.Screenshot` to callers that are not allowlisted, so
 tests use a test-only extension, `dragshift-test@eteen12.github.io`
 (`tests/linux/ext/`). It owns `io.github.eteen12.DragShiftTest` on the session's private
 bus and offers `Version`, `Screenshot(path)`, `ScreenshotArea(x, y, w, h, path)`,
-`ListWindows`, `ActivateWindow(id)` and `GetPointer`.
+`ListWindows`, `ActivateWindow(id)`, `GetPointer` and the input methods below.
 
 - `Session(helper=True)` (CLI: `--helper`) copies it into the session's temporary
   `XDG_DATA_HOME` and enables it. The shared `gnome_session` fixture always does this.
@@ -112,6 +112,37 @@ uv run python -m tests.linux.session --helper -- gdbus call --session \
   --dest io.github.eteen12.DragShiftTest --object-path /io/github/eteen12/DragShiftTest \
   --method io.github.eteen12.DragShiftTest.ListWindows
 ```
+
+### Pointer and keyboard injection
+
+The helper also injects input into the isolated session: `MovePointer(x, y)`,
+`Button(button, pressed)`, `Key(keysym, pressed)`, `TypeText(text)` and `ReleaseAll()`.
+It uses Clutter virtual devices on the isolated shell's own seat. They live inside that
+gnome-shell process and create no uinput or `/dev/input` device, so the events cannot reach
+your real desktop. The extension also refuses to create them unless the shell is headless
+and runs from a launcher session root (`/tmp/dragshift-session-*`).
+
+- `tests/linux/inject.py` has the gestures: `glide(shell, x, y, dur)` (at least 60
+  smoothstep steps), `click`, `press("Escape")`, `with hold_key(shell, "Shift_L"):`,
+  `drag_to(shell, x, y, start=..., hold="Shift_L")`, `type_text` and `release_all`. Keys
+  are X keysym names (`Shift_L`, `Control_L`, `Alt_L`, `Escape`, `Return`) or characters.
+- Each call returns after the shell has handled its events, so a key release can never
+  overtake the move sent before it.
+- `TypeText` types only characters that the session's keymap has. The session uses the
+  default `us` layout, which covers ASCII.
+- Do not use uinput, `ydotool` or `xdotool` instead: those drive the real seat.
+- Mutter clamps coordinates to the monitor. Avoid (0, 0), where GNOME's hot corner opens
+  the overview (the Docker image's `user` mode has it on).
+- `tests/linux/probe_window.py` is a PySide6 window that logs every event it gets as JSON
+  lines, and its `ProbeWindow` runs it in a session. It uses Xwayland (`xcb`) when Qt can
+  load that plugin, and native Wayland otherwise. On a desktop without `libxcb-cursor0`
+  that means Wayland; the Docker image runs it on xcb.
+- `tests/linux/test_inject.py` also proves the isolation. The input methods are served by
+  the isolated shell's pid on its private bus, no session process holds `/dev/input/*` or
+  `/dev/uinput`, and `/proc/bus/input/devices` does not change. The real desktop's idle
+  time keeps growing while input is injected; this check is a read-only
+  `org.gnome.Mutter.IdleMonitor.GetIdletime` call, skipped without a real session or while
+  the desktop is in use.
 
 ### The same tests in Docker (CI parity)
 

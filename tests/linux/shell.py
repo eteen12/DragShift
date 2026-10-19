@@ -16,6 +16,7 @@ Usage::
         png = shell.screenshot()                       # Path under the session root
         win = shell.wait_for_window(wm_class="org.gnome.Nautilus")
         shell.activate_window(win["id"])
+        shell.move_pointer(500, 400)                   # input: see tests/linux/inject.py
 
 This file is also the bridge (`python3 -I shell.py --bridge`), so the module level must
 only use the standard library.
@@ -43,6 +44,11 @@ SIGNATURES = {
     "ListWindows": "",
     "ActivateWindow": "(t)",
     "GetPointer": "",
+    "MovePointer": "(ii)",
+    "Button": "(ub)",
+    "Key": "(ub)",
+    "TypeText": "(s)",
+    "ReleaseAll": "",
 }
 
 
@@ -175,6 +181,29 @@ class ShellHelper:
     def get_pointer(self) -> tuple[int, int, int]:
         """(x, y, Clutter modifier mask) from global.get_pointer()."""
         return tuple(self.call("GetPointer"))
+
+    # Input injection (Clutter virtual devices inside the isolated shell only; the
+    # extension refuses them anywhere else). tests/linux/inject.py builds on these.
+    def move_pointer(self, x: int, y: int) -> tuple[int, int]:
+        """Absolute move in stage coordinates. Returns once the shell's pointer is there
+        (Mutter clamps it to the monitor), with the position it ended up at."""
+        return tuple(self.call("MovePointer", int(round(x)), int(round(y))))
+
+    def button(self, button: int, pressed: bool) -> None:
+        """button: 1 primary, 2 middle, 3 secondary."""
+        self.call("Button", button, pressed)
+
+    def key(self, keyval: int, pressed: bool) -> None:
+        """keyval: an X keysym (inject.KEYSYMS). Held until released explicitly."""
+        self.call("Key", keyval, pressed)
+
+    def type_text(self, text: str) -> None:
+        """Press and release a key per character (keysyms as Gdk.unicode_to_keyval)."""
+        self.call("TypeText", text)
+
+    def release_all(self) -> None:
+        """Release every key and button still held through the helper."""
+        self.call("ReleaseAll")
 
 
 def _bridge() -> int:
