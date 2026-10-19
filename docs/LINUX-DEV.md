@@ -430,6 +430,46 @@ from every other app meanwhile. The grab belongs to the client's own D-Bus conne
 so it also ends when the app exits or crashes, or when the extension is disabled. It
 returns False when the extension is missing or something else already holds Escape.
 
+### Click mode (menu without a drag)
+
+The tray's *Open a file…*, Files' Open With and a second `dragshift <file>` open the menu
+in click mode (`app.show_click_menu`, #36). On Linux:
+
+- **Where it opens.** The menu opens at the pointer from the extension
+  (`app.linux_click_pos`). Without the extension it opens at the centre of the primary
+  screen. `activateWindow()` is not called, since on Wayland it can only ask for
+  attention.
+- **Escape.** The menu never has the keyboard focus (the extension hands it back), so
+  it holds `watch_escape(True)` while it is open and releases it when it hides.
+- **Clicks outside.** `grabMouse()` is not used on Linux. Under Wayland it only
+  redirects events between DragShift's own windows. Measured: 0 of 70 clicks on other
+  windows reached the grabbing menu. Instead, a thread reads `pointer_state()` every
+  `radial.CLICK_POLL_MS` (8 ms) while the menu is open. A button going down outside the
+  menu's frame closes the menu, on the press. Shift going down flips the ring.
+  - A GUI-thread timer stalled for up to 60 ms while the menu painted, so the poll has
+    its own thread.
+  - Measured with the real app on this machine (20 tries each, under the load of
+    parallel test sessions): presses held 20 ms or more closed it every time,
+    10-15 ms in 39 of 40 tries, 6 ms in 19 of 20, and instant press/release pairs in
+    13 of 20. A human click holds 30 ms or more.
+  - Nothing grabs the click, so it also reaches what is under it. A right-click on the
+    desktop closes the menu and opens the desktop's context menu.
+- **Clicks on the menu** still come to `mouseReleaseEvent`: a petal runs its action, the
+  hub flips the ring, and a right-click or a click on the transparent corners closes the
+  menu.
+- **File picker.** `QFileDialog.getOpenFileNames` stays as it is.
+  - By default (no `QT_QPA_PLATFORMTHEME`, GNOME), Qt's GTK 3 theme shows GTK's chooser
+    inside DragShift's process. Its Wayland app id is `python`, so the dock shows it as
+    a separate window.
+  - With `QT_QPA_PLATFORMTHEME=xdgdesktopportal`, GNOME's portal chooser
+    (`xdg-desktop-portal-gnome`) is used.
+  - Both return the real path for an unsandboxed app.
+
+```sh
+uv run pytest tests/test_click_mode.py                        # offscreen, extension faked
+uv run pytest -s tests/linux/test_click_mode.py               # real app, scale 1 and 2
+```
+
 ### Screen capture (`CaptureArea`)
 
 `platform_linux.capture(x, y, w, h)` returns the screen under a rect as a PIL RGB image of

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 import sys
+import threading
 from dataclasses import dataclass
 from typing import Callable
 
@@ -32,6 +33,10 @@ IS_LINUX = sys.platform.startswith("linux")
 # Linux: the shell extension finds the menu by this title (PlaceWindow matches pid + title,
 # so no other DragShift window may use it) to place it, keep it on top and unfocused.
 MENU_TITLE = "DragShift menu"
+# Linux click mode (#36): how often the extension's pointer state is read while the menu is
+# open, to see a button pressed outside it. Measured: 8 ms catches every press held 10 ms
+# or longer (a human click holds 30 ms and more) and closes the menu 1-9 ms after it.
+CLICK_POLL_MS = 8
 SIZE = 400          # window size (room for shadow + hover pop)
 R_OUT = 158         # outer radius of petals
 R_IN = 60           # inner radius of petals
@@ -93,6 +98,11 @@ class _RenderJob(QRunnable):
 class RadialMenu(QWidget):
     activated = Signal(object, list)     # Item, paths
     dismissed = Signal()
+    # Linux click mode, from background threads: Escape (the extension's signal) and, with
+    # the watch's serial, a press outside the menu at (x, y) and Shift going down
+    _escape = Signal()
+    _outside = Signal(int, int, int)
+    _shift = Signal(int)
 
     def __init__(self, build_rings: Callable[[list[str]], dict[str, list[Item]]],
                  describe: Callable[[list[str]], str]):
@@ -108,6 +118,13 @@ class RadialMenu(QWidget):
         self.resize(SIZE, SIZE)
         if IS_LINUX:
             self.setWindowTitle(MENU_TITLE)
+            self._watch: threading.Event | None = None   # set = stop the pointer watch
+            self._watch_serial = 0
+            self._menu_rect = QRect()
+            self._watching_esc = False
+            self._escape.connect(self.close_menu)
+            self._outside.connect(self._linux_outside)
+            self._shift.connect(self._linux_shift)
 
         self.paths: list[str] = []
         self.rings: dict[str, list[Item]] = {}
@@ -218,7 +235,9 @@ class RadialMenu(QWidget):
         self.raise_()
         self.anim.start()
         self.frame.start()
-        if self.click_mode:
+        if IS_LINUX:
+            self._linux_click_watch(self.click_mode)
+        elif self.click_mode:
             # behave like a popup: a click anywhere outside dismisses it
             QTimer.singleShot(0, self.grabMouse)
 
@@ -253,6 +272,70 @@ class RadialMenu(QWidget):
         print(f"menu: at ({tl.x()}, {tl.y()}) {SIZE}x{SIZE}, moved now: {moved}, "
               f"backdrop: {glass.LAST_SOURCE or 'none'}", flush=True)
 
+    def _linux_click_watch(self, on: bool):
+        """Linux click mode (#36). The menu never holds the keyboard focus (the extension
+        hands it straight back), and grabMouse() under Wayland only redirects events between
+        DragShift's own windows: a click on another app never reaches us (measured). So,
+        while a click-mode menu is open, Escape comes from the extension's WatchEscape, and
+        a button pressed outside the menu from its pointer state, read every CLICK_POLL_MS
+        on a thread of its own (a GUI-thread timer stalls while the menu paints). Clicks on
+        the menu itself still arrive as mouseReleaseEvent."""
+        from . import platform_linux
+        if on:
+            self._menu_rect = QRect(self.pos(), self.size())
+            if self._watch is None:
+                self._watch_serial += 1
+                self._watch = threading.Event()
+                threading.Thread(target=self._linux_watch, name="menu-click-watch",
+                                 args=(self._watch_serial, self._watch), daemon=True).start()
+            if not self._watching_esc:
+                self._watching_esc = platform_linux.watch_escape(True, self._escape.emit)
+                if not self._watching_esc:
+                    print("menu: Escape not watched (no extension, or another program "
+                          "holds it)", flush=True)
+        else:
+            if self._watch is not None:
+                self._watch.set()
+                self._watch = None
+                self._watch_serial += 1      # anything the old thread still sends is stale
+            if self._watching_esc:
+                self._watching_esc = False
+                platform_linux.watch_escape(False)
+
+    def _linux_watch(self, serial: int, stop: threading.Event):
+        held = None
+        while not stop.wait(CLICK_POLL_MS / 1000):
+            held = self._linux_poll(serial, held)
+
+    def _linux_poll(self, serial: int, held: int | None) -> int | None:
+        """One look at the pointer: a mouse button going down outside the menu sends
+        _outside (it closes, like a click outside a popup), Shift going down sends _shift
+        (it flips the ring: keyPressEvent's Shift, which never fires here). `held` is what
+        was down at the last look (None: this is the first, so whatever is already held
+        when the menu opens counts only once released and pressed again); returns what
+        is down now."""
+        from . import platform_linux
+        st = platform_linux.pointer_state()
+        if st is None:
+            return held
+        x, y, _, mask = st
+        now = mask & (platform_linux.BUTTONS_MASK | platform_linux.SHIFT_MASK)
+        down = now & ~held if held is not None else 0
+        if down & platform_linux.BUTTONS_MASK and not self._menu_rect.contains(x, y):
+            self._outside.emit(serial, x, y)
+        elif down & platform_linux.SHIFT_MASK:
+            self._shift.emit(serial)
+        return now
+
+    def _linux_outside(self, serial: int, x: int, y: int):
+        if serial == self._watch_serial and self.isVisible():
+            print(f"menu: click outside at ({x}, {y}), closing", flush=True)
+            self.close_menu()
+
+    def _linux_shift(self, serial: int):
+        if serial == self._watch_serial:
+            self.next_ring()
+
     def close_menu(self):
         if self.isVisible():
             self.hide()
@@ -262,6 +345,8 @@ class RadialMenu(QWidget):
 
     def hideEvent(self, e):
         self.frame.stop()
+        if IS_LINUX:
+            self._linux_click_watch(False)
         if QWidget.mouseGrabber() is self:
             self.releaseMouse()
         super().hideEvent(e)
