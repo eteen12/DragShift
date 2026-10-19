@@ -1,0 +1,166 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0 -- /home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/installer/.venv/bin/python
+rootdir: /home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/installer
+collecting ... collected 30 items
+
+tests/linux/test_session.py::test_shell_version PASSED
+tests/linux/test_session.py::test_remote_desktop_on_private_bus PASSED
+tests/linux/test_session.py::test_display_is_the_sessions_xwayland PASSED
+tests/linux/test_session.py::test_real_desktop_untouched PASSED
+tests/linux/test_session.py::test_runtime_dir_is_private_and_short PASSED
+tests/linux/test_session.py::test_extensions_list_contains_ding_from_private_copy PASSED
+tests/linux/test_session.py::test_ubuntu_default_extensions_active PASSED
+tests/linux/test_session.py::test_nautilus_starts_in_the_session PASSED
+tests/linux/test_session.py::test_desktop_icons_use_ubuntus_layout_in_every_mode PASSED
+tests/linux/test_session.py::test_parallel_session_and_teardown PASSED
+tests/linux/test_session.py::test_caller_extension_is_installed_and_enabled PASSED
+tests/linux/test_session.py::test_session_is_up_only_after_startup_complete PASSED
+tests/linux/test_session.py::test_startup_wait_reads_the_log_incrementally PASSED
+tests/linux/test_session.py::test_boot_crash_fails_fast_with_log_tail PASSED
+tests/linux/test_session.py::test_cli_runs_command_and_cleans_up PASSED
+tests/linux/test_session.py::test_cli_ctrl_c_cleans_up PASSED
+tests/linux/test_session.py::test_reap_stale_sessions_only_touches_dead_owners PASSED
+tests/linux/test_session.py::test_ubuntu_mode_needs_mode_file_and_theme PASSED
+tests/linux/test_install.py::test_installer_runs_without_sudo_and_asks_for_a_new_login 
+$ install-linux.sh
+→ Installing from /home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/installer
+→ Installing DragShift 1.1.0 into /tmp/dragshift-session-qo33piks/data/dragshift
+→ Creating the Python environment with uv
+→ Installing Python packages (about 300 MB to download)
+→ Installing the launcher /tmp/dragshift-session-qo33piks/home/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+→ Installing the GNOME Shell extension dragshift@eteen12.github.io
+→ DragShift starts when you log in (/tmp/dragshift-session-qo33piks/config/autostart/dragshift.desktop)
+→ Checking that DragShift runs
+→ Starting DragShift (look for its icon in the top bar)
+✓ DragShift 1.1.0 is installed.
+  Log out and back in once so GNOME loads the DragShift extension.
+  Until then, Shift+drag can't open DragShift's menu.
+  The dragshift command works in new terminals after you log in again (~/.profile adds ~/.local/bin).
+  Then drag any file in Files or on the desktop and press Shift.
+(exit 0, 2 s)
+
+$ install-linux.sh
+→ Installing from /home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/installer
+→ Stopping the running DragShift
+→ Installing DragShift 1.1.0 into /tmp/dragshift-session-qo33piks/data/dragshift
+→ Updating Python packages
+→ Installing the launcher /tmp/dragshift-session-qo33piks/home/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+→ Installing the GNOME Shell extension dragshift@eteen12.github.io
+→ DragShift starts when you log in (/tmp/dragshift-session-qo33piks/config/autostart/dragshift.desktop)
+→ Checking that DragShift runs
+→ Starting DragShift (look for its icon in the top bar)
+✓ DragShift 1.1.0 is installed.
+  Log out and back in once so GNOME loads the DragShift extension.
+  Until then, Shift+drag can't open DragShift's menu.
+  The dragshift command works in new terminals after you log in again (~/.profile adds ~/.local/bin).
+  Then drag any file in Files or on the desktop and press Shift.
+(exit 0, 1 s)
+PASSED
+tests/linux/test_install.py::test_every_file_is_in_place PASSED
+tests/linux/test_install.py::test_the_installer_starts_dragshift 
+gnome-extensions info right after the install: Extension “dragshift@eteen12.github.io” doesn't exist
+PASSED
+tests/linux/test_install.py::test_running_it_again_changes_nothing 
+5569 installed files, identical after the second run
+PASSED
+tests/linux/test_install.py::test_nothing_is_written_outside_the_session_home PASSED
+tests/linux/test_install.py::test_the_extension_is_active_after_logging_in_again 
+dragshift@eteen12.github.io
+  Name: DragShift
+  Description: Gives the DragShift app the pointer state and screen capture that Wayland withholds from ordinary apps, over the session D-Bus (io.github.eteen12.DragShift).
+  Path: /tmp/dragshift-session-qo33piks/data/gnome-shell/extensions/dragshift@eteen12.github.io
+  URL: https://github.com/eteen12/DragShift
+  Version: 1.1.0 (1)
+  Enabled: Yes
+  State: ACTIVE
+
+PASSED
+tests/linux/test_install.py::test_autostart_starts_dragshift_and_shift_drag_opens_the_menu 
+PNG: proposed CopyAction, answered CopyAction
+PASSED
+tests/linux/test_install.py::test_the_app_grid_starts_dragshift 
+app grid: DragShift running 51 ms after Return
+PASSED
+tests/linux/test_install.py::test_files_open_with_dragshift 
+Open With: menu 363 ms after Open
+PASSED
+tests/linux/test_install.py::test_files_scripts_dragshift 
+installed: menu at the pointer 364 ms after the click on DragShift… (frame 270,104 400x400, pointer (470, 304))
+PASSED
+tests/linux/test_install.py::test_curl_one_liner_clones_then_updates 
+$ bash -c curl -fsSL "file://$1" | bash -s -- --no-start bash /tmp/pytest-of-ethan/pytest-741/test_curl_one_liner_clones_the0/DragShift/install-linux.sh
+→ Downloading DragShift (main) from file:///tmp/pytest-of-ethan/pytest-741/test_curl_one_liner_clones_the0/DragShift
+→ Installing DragShift 1.1.0 into /tmp/dragshift-session-m2t0m06p/data/dragshift
+→ Creating the Python environment with uv
+→ Installing Python packages (about 300 MB to download)
+→ Installing the launcher /tmp/dragshift-session-m2t0m06p/home/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+→ Installing the GNOME Shell extension dragshift@eteen12.github.io
+→ DragShift starts when you log in (/tmp/dragshift-session-m2t0m06p/config/autostart/dragshift.desktop)
+→ Checking that DragShift runs
+✓ DragShift 1.1.0 is installed.
+  Log out and back in once so GNOME loads the DragShift extension.
+  Until then, Shift+drag can't open DragShift's menu.
+  The dragshift command works in new terminals after you log in again (~/.profile adds ~/.local/bin).
+  Then drag any file in Files or on the desktop and press Shift.
+(exit 0, 2 s)
+
+$ bash /tmp/dragshift-session-m2t0m06p/data/dragshift/src/install-linux.sh --no-start
+→ Downloading DragShift (main) from file:///tmp/pytest-of-ethan/pytest-741/test_curl_one_liner_clones_the0/DragShift
+→ Installing DragShift 9.9.9 into /tmp/dragshift-session-m2t0m06p/data/dragshift
+→ Updating Python packages
+→ Installing the launcher /tmp/dragshift-session-m2t0m06p/home/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+→ Installing the GNOME Shell extension dragshift@eteen12.github.io
+→ Checking that DragShift runs
+✓ DragShift 9.9.9 is installed.
+  Log out and back in once so GNOME loads the DragShift extension.
+  Until then, Shift+drag can't open DragShift's menu.
+  The dragshift command works in new terminals after you log in again (~/.profile adds ~/.local/bin).
+  Then drag any file in Files or on the desktop and press Shift.
+(exit 0, 1 s)
+
+$ bash -c curl -fsSL "file://$1" | bash -s -- --no-start bash /tmp/pytest-of-ethan/pytest-741/test_curl_one_liner_clones_the0/DragShift/install-linux.sh
+→ Downloading DragShift (main) from file:///tmp/pytest-of-ethan/pytest-741/test_curl_one_liner_clones_the0/DragShift
+→ Installing DragShift 9.9.9 into /tmp/dragshift-session-m2t0m06p/data/dragshift
+→ Creating the Python environment with uv
+→ Installing Python packages (about 300 MB to download)
+→ Installing the launcher /tmp/dragshift-session-m2t0m06p/home/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+→ Installing the GNOME Shell extension dragshift@eteen12.github.io
+→ Checking that DragShift runs
+✓ DragShift 9.9.9 is installed.
+  Log out and back in once so GNOME loads the DragShift extension.
+  Until then, Shift+drag can't open DragShift's menu.
+  The dragshift command works in new terminals after you log in again (~/.profile adds ~/.local/bin).
+  Then drag any file in Files or on the desktop and press Shift.
+(exit 0, 2 s)
+PASSED
+tests/linux/test_install.py::test_tarball_without_uv_and_no_autostart 
+$ bash -c curl -fsSL "file://$1" | bash -s -- --no-start --no-autostart bash /home/ethan/.config/Claude/scratch-workspaces/8013359b-2e34-4c97-ae91-26fa05cfbe4a/8d95d127-2cc6-4662-ac2b-522655599c17/scratch-2026-10-18-45c7da/wt/installer/install-linux.sh
+→ Downloading DragShift from file:///tmp/pytest-of-ethan/pytest-741/test_tarball_without_uv_and_no0/main.tar.gz
+→ Installing DragShift 1.1.0 into /tmp/dragshift-session-w1jdqra2/data/dragshift
+→ Creating the Python environment
+→ Installing Python packages (about 300 MB to download)
+→ Installing the launcher /tmp/dragshift-session-w1jdqra2/home/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+→ Installing the GNOME Shell extension dragshift@eteen12.github.io
+→ DragShift doesn't start when you log in
+→ Checking that DragShift runs
+✓ DragShift 1.1.0 is installed.
+  Log out and back in once so GNOME loads the DragShift extension.
+  Until then, Shift+drag can't open DragShift's menu.
+  The dragshift command works in new terminals after you log in again (~/.profile adds ~/.local/bin).
+  Then drag any file in Files or on the desktop and press Shift.
+(exit 0, 11 s)
+PASSED
+
+======================== 30 passed in 87.96s (0:01:27) =========================

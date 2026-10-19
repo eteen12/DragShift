@@ -1,0 +1,24 @@
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+Successfully built 2d6492b8181e
+Successfully tagged dragshift-gnome-test:local
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0 -- /opt/venv/bin/python
+rootdir: /src
+collecting ... collected 302 items / 289 deselected / 13 selected
+tests/linux/test_install.py::test_installer_runs_without_sudo_and_asks_for_a_new_login PASSED [  7%]
+tests/linux/test_install.py::test_every_file_is_in_place PASSED          [ 15%]
+tests/linux/test_install.py::test_the_installer_starts_dragshift PASSED  [ 23%]
+tests/linux/test_install.py::test_running_it_again_changes_nothing PASSED [ 30%]
+tests/linux/test_install.py::test_nothing_is_written_outside_the_session_home PASSED [ 38%]
+tests/linux/test_install.py::test_the_extension_is_active_after_logging_in_again PASSED [ 46%]
+tests/linux/test_install.py::test_autostart_starts_dragshift_and_shift_drag_opens_the_menu PASSED [ 53%]
+tests/linux/test_install.py::test_the_app_grid_starts_dragshift PASSED   [ 61%]
+tests/linux/test_install.py::test_files_open_with_dragshift XFAIL (o...) [ 69%]
+tests/linux/test_install.py::test_files_scripts_dragshift PASSED         [ 76%]
+tests/linux/test_install.py::test_curl_one_liner_clones_then_updates SKIPPED [ 84%]
+tests/linux/test_install.py::test_tarball_without_uv_and_no_autostart PASSED [ 92%]
+tests/linux/test_session.py::test_logging_in_again_on_the_same_root PASSED [100%]
+===== 11 passed, 1 skipped, 289 deselected, 1 xfailed in 150.99s (0:02:30) =====
+rc=0

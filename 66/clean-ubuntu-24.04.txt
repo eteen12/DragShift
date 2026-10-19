@@ -1,0 +1,63 @@
+=== 1. bare ubuntu:24.04 (no python3, no Qt libs): expect the apt line
+✗ DragShift needs these system packages first. Install them with:
+
+    sudo apt install python3 python3-venv libgl1 libegl1 libfontconfig1 libfreetype6 libglib2.0-0t64 libdbus-1-3 libx11-6 libxkbcommon0 libgssapi-krb5-2 libwayland-client0 libwayland-cursor0 libwayland-egl1 desktop-file-utils
+
+  then run this installer again.
+exit 1
+=== 2. root runs exactly: apt install python3 python3-venv libgl1 libegl1 libfontconfig1 libfreetype6 libglib2.0-0t64 libdbus-1-3 libx11-6 libxkbcommon0 libgssapi-krb5-2 libwayland-client0 libwayland-cursor0 libwayland-egl1 desktop-file-utils
+installed: python3 python3-venv libgl1 libegl1 libfontconfig1 libfreetype6 libglib2.0-0t64 libdbus-1-3 libx11-6 libxkbcommon0 libgssapi-krb5-2 libwayland-client0 libwayland-cursor0 libwayland-egl1 desktop-file-utils
+=== 3. installer again, as u (pip, no uv, no GNOME, no display)
+→ Installing from /src
+→ Installing DragShift 1.1.0 into /home/u/.local/share/dragshift
+→ Creating the Python environment
+→ Installing Python packages (about 300 MB to download)
+→ Installing the launcher /home/u/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+! GNOME Shell not found: skipped the shell extension. Shift+drag needs GNOME Shell 46; the app, Open With and Files' Scripts menu work without it.
+→ DragShift starts when you log in (/home/u/.config/autostart/dragshift.desktop)
+→ Checking that DragShift runs
+✓ DragShift 1.1.0 is installed.
+  The dragshift command works in new terminals after you log in again (~/.profile adds ~/.local/bin).
+  Then drag any file in Files or on the desktop and press Shift.
+exit 0
+=== 4. files
+-rwxr-xr-x 1 u u 1099 Oct 19 13:55 /home/u/.local/bin/dragshift
+
+/home/u/.config/autostart:
+total 4
+-rw-rw-r-- 1 u u 235 Oct 19 13:55 dragshift.desktop
+
+/home/u/.local/share/applications:
+total 8
+-rw-r--r-- 1 u u  682 Oct 19 13:55 io.github.eteen12.DragShift.desktop
+-rw-rw-r-- 1 u u 1109 Oct 19 13:55 mimeinfo.cache
+
+/home/u/.local/share/icons/hicolor/256x256/apps:
+total 40
+-rw-r--r-- 1 u u 39168 Oct 19 13:55 io.github.eteen12.DragShift.png
+
+/home/u/.local/share/nautilus/scripts:
+total 4
+-rwxr-xr-x 1 u u 3723 Oct 19 13:55 DragShift…
+exec "$VENV/bin/python" -m dragshift "$@"
+Exec=/home/u/.local/bin/dragshift %F
+=== 5. selftest of the installed launcher
+This plugin does not support raise()
+SELFTEST OK
+=== 6. run again: idempotent
+→ Installing from /src
+→ Installing DragShift 1.1.0 into /home/u/.local/share/dragshift
+→ Updating Python packages
+→ Installing the launcher /home/u/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+! GNOME Shell not found: skipped the shell extension. Shift+drag needs GNOME Shell 46; the app, Open With and Files' Scripts menu work without it.
+→ DragShift starts when you log in (/home/u/.config/autostart/dragshift.desktop)
+→ Checking that DragShift runs
+✓ DragShift 1.1.0 is installed.
+  Then drag any file in Files or on the desktop and press Shift.
+exit 0
+identical: 6052 files, 7af18397a319bf1a3475a20e54fe389b18f7c91b357c750475bfcdddae095b35  -
+rc=0

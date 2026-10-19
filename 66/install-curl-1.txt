@@ -1,0 +1,17 @@
+$ bash -c curl -fsSL "file://$1" | bash -s -- --no-start bash /tmp/pytest-of-ethan/pytest-741/test_curl_one_liner_clones_the0/DragShift/install-linux.sh
+→ Downloading DragShift (main) from file:///tmp/pytest-of-ethan/pytest-741/test_curl_one_liner_clones_the0/DragShift
+→ Installing DragShift 1.1.0 into /tmp/dragshift-session-m2t0m06p/data/dragshift
+→ Creating the Python environment with uv
+→ Installing Python packages (about 300 MB to download)
+→ Installing the launcher /tmp/dragshift-session-m2t0m06p/home/.local/bin/dragshift
+→ Adding DragShift to the app grid and to Open With
+→ Adding Files' right-click → Scripts → DragShift…
+→ Installing the GNOME Shell extension dragshift@eteen12.github.io
+→ DragShift starts when you log in (/tmp/dragshift-session-m2t0m06p/config/autostart/dragshift.desktop)
+→ Checking that DragShift runs
+✓ DragShift 1.1.0 is installed.
+  Log out and back in once so GNOME loads the DragShift extension.
+  Until then, Shift+drag can't open DragShift's menu.
+  The dragshift command works in new terminals after you log in again (~/.profile adds ~/.local/bin).
+  Then drag any file in Files or on the desktop and press Shift.
+(exit 0, 2 s)
