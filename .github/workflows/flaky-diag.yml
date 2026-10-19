@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest]
-        exp: [alone, gc, sysmod, wait]
+        exp: [gc_patched_noworker, gc_patched_worker, gc_genuine_worker, garbage]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -32,18 +32,16 @@ jobs:
         run: |
           args=""
           case "$EXP" in
-            alone) args="tests/test_result_actions.py" ;;
-            gc) export DIAG_GC=1 ;;
-            sysmod|wait) python .github/diag/edit.py "$EXP" ;;
+            *) python .github/diag/edit.py "$EXP" ;;
           esac
           fails=0
           for i in $(seq 1 20); do
             if python -m pytest -q -s -p no:cacheprovider -p diagplug $args > out.txt 2>&1; then
-              echo "run $i: ok ($(tail -1 out.txt))"
+              echo "run $i: ok ($(tail -1 out.txt))"; grep "\[diag\] garbage" out.txt | head -1 | cut -c1-3000
             else
               fails=$((fails+1))
               echo "::group::run $i FAILED"
-              grep -v -E '^\s*File ".*(_pytest|pluggy)' out.txt | tail -80
+              grep -v -E '^\s*File ".*(_pytest|pluggy)' out.txt | tail -60
               echo "::endgroup::"
             fi
           done
