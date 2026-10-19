@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ctypes
 import sys
+import time
 
 from PySide6.QtCore import QObject, QPoint, QTimer, Signal
 from PySide6.QtGui import QCursor
@@ -15,7 +16,15 @@ from PySide6.QtGui import QCursor
 IS_LINUX = sys.platform.startswith("linux")
 VK_LBUTTON, VK_SHIFT, VK_ESCAPE = 0x01, 0x10, 0x1B
 DRAG_THRESHOLD = 10   # px the mouse must travel with the button held
+# Linux: further, so the file manager has started its drag before the menu maps. With Shift
+# held at the press, the desktop (DING) otherwise often starts no drag at all (#31).
+LINUX_DRAG_THRESHOLD = 20
 NO_DRAG_TIMEOUT = 50  # ticks (≈ 0.75 s) to wait for a file drag to enter before hiding
+# Linux: without the shell extension there is no input state at all, so the watcher idles
+# and asks for it every PROBE_MS; after LOST_AFTER s of no data it goes back to that.
+PROBE_MS = 2000
+LOST_AFTER = 5.0
+LOG_EVERY = 60.0      # s between "no pointer state" log lines
 
 
 class DragShiftWatcher(QObject):
@@ -44,7 +53,10 @@ class DragShiftWatcher(QObject):
         if IS_LINUX:
             from . import platform_linux
             self._linux = platform_linux
+            self._probe = QTimer(self, interval=PROBE_MS, timeout=self._probe_extension)
         self._pos = QPoint()   # Linux: pointer position from the last pointer_state()
+        self._lost_at: float | None = None    # Linux: first tick of the current run of Nones
+        self._logged_at: float | None = None
         self.timer = QTimer(self, interval=15, timeout=self._tick)
 
     def set_key(self, name: str):
@@ -54,9 +66,20 @@ class DragShiftWatcher(QObject):
     def start(self):
         if self._user32 is not None or self._mac is not None:
             self.timer.start()
-        elif self._linux is not None and self._linux.extension_available():
-            # no pointer data without the extension: stay idle instead of polling nothing
-            self.timer.start()
+        elif self._linux is not None:
+            self._probe.start()
+            self._probe_extension()
+
+    def _probe_extension(self):
+        """Linux: start polling once the shell extension answers. Until then there is no
+        input state, so stay idle; the probe timer asks again, which picks up an extension
+        enabled after start-up (extension_available() keeps its own D-Bus back-off)."""
+        if self._linux.extension_available():
+            self._probe.stop()
+            self._lost_at = None
+            if not self.timer.isActive():
+                self.timer.start()
+                print("trigger: following the extension's pointer state", flush=True)
 
     def _down(self, vk: int) -> bool:
         return bool(self._user32.GetAsyncKeyState(vk) & 0x8000)
@@ -72,6 +95,7 @@ class DragShiftWatcher(QObject):
                 return None
             x, y, left, mask = st
             self._pos = QPoint(int(x), int(y))
+            self._lost_at = None
             key = self._linux.KEY_MASKS.get(self.key_name, self._linux.SHIFT_MASK)
             return bool(left), bool(mask & key), False   # Escape: not reported yet
         return self._down(VK_LBUTTON), self._down(self.vk), self._down(VK_ESCAPE)
@@ -79,6 +103,7 @@ class DragShiftWatcher(QObject):
     def _tick(self):
         state = self._state()
         if state is None:
+            self._no_state()
             return
         lbtn, shift, esc = state
         pos = self._pos if self._linux is not None else QCursor.pos()
@@ -100,13 +125,34 @@ class DragShiftWatcher(QObject):
                 if self._down_at is None:
                     self._down_at = pos
                     self._fired = False
-                moved = (pos - self._down_at).manhattanLength() >= DRAG_THRESHOLD
+                need = LINUX_DRAG_THRESHOLD if self._linux is not None else DRAG_THRESHOLD
+                moved = (pos - self._down_at).manhattanLength() >= need
                 if self.enabled and moved and shift and not self._fired:
                     self._fired = True
                     self._idle_ticks = 0
                     self._shown_at = pos
+                    if self._linux is not None:
+                        print(f"trigger: menu at ({pos.x()}, {pos.y()})", flush=True)
                     self.show_menu.emit(pos)
             else:
                 self._down_at = None
                 self._fired = False
         self._shift_was = shift
+
+    def _no_state(self):
+        """Linux: no pointer state this tick (extension stopped, hung or disabled; while
+        its client backs off this comes as a run of Nones). An open menu is closed as if
+        the button went up: stale state must not keep it open. Otherwise the tick is
+        skipped (_down_at kept), and after LOST_AFTER s the watcher idles on the probe."""
+        now = time.monotonic()
+        if self._lost_at is None:
+            self._lost_at = now
+        if self._logged_at is None or now - self._logged_at >= LOG_EVERY:
+            self._logged_at = now
+            print("trigger: no pointer state from the GNOME Shell extension",
+                  file=sys.stderr, flush=True)
+        if self.menu_visible():
+            QTimer.singleShot(120, self.hide_menu.emit)
+        elif now - self._lost_at >= LOST_AFTER:
+            self.timer.stop()
+            self._probe.start()
