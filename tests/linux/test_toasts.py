@@ -231,32 +231,11 @@ def test_five_cards_stack_four_then_slide_and_pause(started):
     assert started["proc"].poll() is None
 
 
-DRIVER = r"""
-import json, sys, time
-from pathlib import Path
-from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtWidgets import QApplication
-app = QApplication([])
-from dragshift import report, toasts
-
-def spin(ms):
-    loop = QEventLoop()
-    QTimer.singleShot(ms, loop.quit)
-    loop.exec()
-
-out = Path(sys.argv[1])
-out.write_bytes(b"x")
-card = toasts.ToastStack().new()
-card.done(report.Result(title="Converted", detail="photo.png → photo.jpg", outs=[out]))
-print(json.dumps({"t": time.time()}), flush=True)
-spin(8000)
-"""
-
-
 def test_done_card_lives_six_and_a_half_seconds(started):
     s, shell = started["session"], started["shell"]
     inject.move(shell, 400, 400)
-    p = s.popen([sys.executable, "-c", DRIVER, str(s.root / "tmp" / "photo.jpg")], cwd=ROOT,
+    p = s.popen([sys.executable, "-m", "tests.linux.toast_driver", "done",
+                 str(s.root / "tmp" / "photo.jpg")], cwd=ROOT,
                 env={"PYTHONPATH": str(ROOT)}, stdout=subprocess.PIPE, text=True)
     try:
         t0 = json.loads(p.stdout.readline())["t"]

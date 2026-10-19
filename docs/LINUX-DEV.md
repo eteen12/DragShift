@@ -89,6 +89,14 @@ environment for child processes, `gnome_session.run(cmd)` and `gnome_session.pop
 run inside the session, and `gnome_session.log_path` is the shell's log.
 `Session(extensions=[dir])` installs and enables extra extensions.
 
+`start()` returns once the shell has finished starting up: it answers `ShellVersion`
+and has logged `GNOME Shell started at …` (its `startup-complete`). Then it waits for
+the helper (`helper=True`) and only then applies `scale`. GNOME Shell answers on D-Bus
+before its startup animation, and a monitor change in that gap wedges its startup for good,
+so the overview stays up and the helper never gets ready (#106). Change the monitors only
+after `start()`. A start that stalls fails within the timeout (60 s), and the error
+carries the shell log tail.
+
 The session never touches your real desktop:
 - It uses its own HOME, XDG directories, `TMPDIR`, `XDG_RUNTIME_DIR` (`/tmp/dsr.*`),
   session bus and an empty private system bus.
@@ -119,7 +127,9 @@ bus and offers `Version`, `Screenshot(path)`, `ScreenshotArea(x, y, w, h, path)`
   `python3-gi`, inside the session environment) and exchanges JSON lines with it.
 - Screenshots are only written inside the session root (`/tmp/dragshift-session-*`); by
   default they go to `<root>/tmp/screenshot-N.png`. Copy one out before the session stops.
-- `Session(helper=True)` waits until the helper answers. If it fails to load (say, a
+- `Session(helper=True)` waits until the helper owns its bus name and answers (the
+  bridge watches the name, so there is no polling). The helper logs its steps to the shell
+  log as `dragshift-test@eteen12.github.io: …`. If it fails to load (say, a
   syntax error), `start()` raises `HelperError` with the extension state, the shell log
   lines that name it and the shell log tail.
 
@@ -143,7 +153,9 @@ and runs from a launcher session root (`/tmp/dragshift-session-*`).
   `drag_to(shell, x, y, start=..., hold="Shift_L")`, `type_text` and `release_all`. Keys
   are X keysym names (`Shift_L`, `Control_L`, `Alt_L`, `Escape`, `Return`) or characters.
 - Each call returns after the shell has handled its events, so a key release can never
-  overtake the move sent before it.
+  overtake the move sent before it. It also waits until the seat's modifier mask shows the
+  Shift, Control and Alt keys and the buttons held, so the next reader never sees a
+  released key as still down.
 - `TypeText` types only characters that the session's keymap has. The session uses the
   default `us` layout, which covers ASCII.
 - Do not use uinput, `ydotool` or `xdotool` instead: those drive the real seat.
@@ -348,6 +360,58 @@ uv run python -m tests.linux.session --extension /tmp/ext/dragshift@eteen12.gith
 The launcher returns once the shell answers on D-Bus. Extensions are enabled a moment
 later, so wait for the name before calling it.
 
+### Who may call the extension (trust model)
+
+Everything but `Version` gives out what GNOME withholds from ordinary apps: screen pixels
+(`CaptureArea`, `CaptureAreaExcludingCaller`), the global pointer with the Shift/Ctrl/Alt
+and button state (`GetPointer`), a global Escape grab (`WatchEscape`), window placement
+(`PlaceWindow`) and the monitors' work areas (`GetWorkArea`). GNOME 41+ allowlists its own screenshot API for that reason, so these
+methods answer only the DragShift app (#93). `Version` stays open, so the app and the
+installer can find the extension. `caller.js` decides:
+
+- The bus daemon gives the caller's uid and pid (`GetConnectionCredentials`). The uid must
+  be the shell's own.
+- `/proc/<pid>/exe` must be a Python interpreter, and `/proc/<pid>/cmdline` must run the
+  app: `python -m dragshift`, `python .../dragshift/__main__.py`, or the installed launcher
+  `~/.local/bin/dragshift` (#66; it execs `python -m dragshift`). `python run.py` is not
+  accepted: start the app with `python -m dragshift` (the app prints a hint when it is
+  refused).
+- Anyone else gets `org.freedesktop.DBus.Error.AccessDenied`, and the shell log (journal)
+  gets one `DragShift: refused <method> to <bus name> (pid N): <reason>` line per
+  connection.
+- The verdict is cached per unique bus name and dropped when that name leaves the bus
+  (`NameOwnerChanged`). The same notification ends a caller's Escape grab and drops its
+  window placements. So only the first call of a connection pays for the check (about
+  0.9 ms). After that `GetPointer` takes a median 0.20 ms, the same as the unchecked
+  `Version` (0.19 ms; `tests/linux/test_caller_check.py::test_get_pointer_latency`).
+
+What this does and doesn't protect against:
+
+- It keeps out casual and accidental callers: `gdbus call`, scripts, and other programs of
+  the user that would otherwise screenshot the screen or follow the pointer quietly.
+- It is defence in depth, not a security boundary against code that already runs as
+  you. A same-user process can start Python with DragShift's command line (even a fake
+  `dragshift` package of its own), or attach to the real app with a debugger, and then
+  call everything. The tests show this on purpose. Such a process could also read your
+  files directly.
+- Other users can't reach your session bus. Flatpak and snap apps don't see
+  `io.github.eteen12.DragShift` at all, because their D-Bus proxies only pass allowlisted
+  names, so the check isn't what keeps them out.
+- The pid comes from the bus daemon at connection time. A process that `exec`s
+  something else keeps its connection and its verdict.
+
+Tests run as pytest, not as DragShift. Only in a headless shell started by the test
+launcher (session root `/tmp/dragshift-session-*`, the same guard as the test helper's
+input injection) does the extension also let in pytest, `python -m tests.linux.<module>`
+and scripts in a `tests/linux` directory. `python -c`, other scripts and `gdbus` are
+refused there too, so a test that drives app code in a process of its own puts it in a
+module (e.g. `python -m tests.linux.toast_driver`). `tests/linux/caller.py` calls every method, and the tests run it under
+different command lines:
+
+```sh
+uv run pytest tests/linux/test_caller_check.py -s   # refusals, the real app, latency
+```
+
 ### Escape while the menu is open
 
 During a file drag, Mutter's drag grab takes Escape itself and cancels the drag, so
@@ -432,8 +496,8 @@ uv run pytest tests/linux/test_capture.py -s   # incl. a real Nautilus drag; pri
 so a visible toast or tool window can re-capture what is behind it (`glass.grab_screen`
 with `below_window` set, which `LiquidBacking` uses for a visible window). It calls
 `CaptureAreaExcludingCaller`. The extension asks the bus daemon for the caller's pid
-(`GetConnectionUnixProcessID`) and hides every window actor whose `Meta.Window.get_pid()`
-matches. That works for native Wayland and Xwayland windows alike. The windows are hidden
+(`GetConnectionCredentials`, in the caller check above) and hides every window actor
+whose `Meta.Window.get_pid()` matches. That works for native Wayland and Xwayland windows alike. The windows are hidden
 in the same synchronous paint as the drag icon, so they never leave the screen. A
 minimised window stays minimised. The app sends no pid or window id, so it can't hide
 another app's windows. An extension without the method gives None, and `grab_screen`
