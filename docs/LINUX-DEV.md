@@ -303,6 +303,37 @@ uv run pytest tests/test_linux_tray.py              # offscreen
 uv run pytest -s tests/linux/test_tray.py           # real app and top bar in the session
 ```
 
+## Open With and the command line
+
+`dragshift a.jpg b.jpg` (or `python -m dragshift a.jpg b.jpg`) hands the files to the
+running DragShift and exits. That DragShift opens one click-mode menu for all of them. If
+DragShift is not running, the same command starts it with the files.
+
+- The hand-off happens in `dragshift/handoff.py` before Qt is imported: it sends
+  `{"files": [...]}` (or `{"show": true}` with no files) to the app's `QLocalServer` and
+  takes about 20–35 ms.
+- On Linux the socket is `$XDG_RUNTIME_DIR/DragShift`. Only you can create files in your
+  runtime dir, so another local user cannot take the name first, as they could in
+  `/tmp`. Without a private (0700, owned by you) runtime dir it falls back to the old
+  `$TMPDIR/DragShift-$USER`. Windows (named pipe) and macOS (temp dir) are unchanged.
+- A socket left by a crash or a SIGTERM: nothing accepts on it, so the hand-off fails
+  at once and the new process starts the app, whose `QLocalServer.removeServer` clears it.
+- Relative paths are resolved against the caller's working directory, and paths that do
+  not exist are dropped. Launches within 280 ms are merged into one menu.
+
+`packaging/linux/` holds what install-linux.sh (#66) installs:
+- `io.github.eteen12.DragShift.desktop`: named after the app id, so GNOME links
+  DragShift's windows to it. `Exec=dragshift %F` and a `MimeType` for every file type
+  DragShift handles put it under *Open With* in Files. Check it with
+  `desktop-file-validate`.
+- `dragshift`: the `~/.local/bin/dragshift` launcher. It ends in
+  `exec "$VENV/bin/python" -m dragshift "$@"`, the form the extension's caller check
+  accepts. Keep it that way.
+
+`tests/linux/test_handoff.py` installs both into a session's HOME and XDG_DATA_HOME,
+never into yours. It covers `gio mime`, the CLI with the app running and not running,
+and Files → Open With… → DragShift.
+
 ## DOCX → PDF and LibreOffice
 
 On Linux, DOCX → PDF uses LibreOffice when it is installed (`soffice` or `libreoffice` on

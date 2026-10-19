@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=DragShift
+GenericName=File Converter
+Comment=Convert, compress and edit images, PDFs, Word documents and text files
+Exec=dragshift %F
+Icon=io.github.eteen12.DragShift
+Terminal=false
+NoDisplay=false
+StartupNotify=false
+Categories=Utility;
+Keywords=convert;compress;resize;crop;pdf;heic;webp;docx;
+MimeType=image/png;image/jpeg;image/webp;image/heif;image/heic;image/tiff;image/avif;image/bmp;image/gif;image/vnd.microsoft.icon;image/x-icon;application/pdf;application/vnd.openxmlformats-officedocument.wordprocessingml.document;text/plain;text/markdown;text/csv;text/x-log;application/json;application/xml;text/xml;text/html;
