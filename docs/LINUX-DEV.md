@@ -421,6 +421,14 @@ reports it), and no drop when the button goes up. That is how the app learns abo
 cancelled drag (#32). Measured with real drags from Files and the desktop into a
 probe window, under native Wayland and Xwayland (`tests/linux/test_escape.py`).
 
+The drag-mode menu acts on it (#32). `RadialMenu.dragLeaveEvent` records when a file
+drag left (`drag_cancelled_at`), and `drag_cancelled_since(pos)` reports that time only
+while the pointer is still over the menu. The watcher closes the menu once that has
+lasted `trigger.DRAG_CANCEL_GRACE` (150 ms) with the button still down and no drop or
+re-entry. That takes about 155-180 ms after Escape. A file carried out of the menu
+leaves with the pointer outside, so the menu stays until the button goes up, as on
+Windows. Tested with the real app in `tests/linux/test_menu_cancel.py`.
+
 Outside a drag (the menu's click mode), `platform_linux.watch_escape(True, callback)`
 asks the extension (`WatchEscape`) to grab Escape globally and calls `callback` on
 every press (`EscapePressed`), from a background thread. While the grab is held the
