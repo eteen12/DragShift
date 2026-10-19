@@ -28,6 +28,7 @@ class Item:
     hint: str = ""
 
 
+IS_LINUX = sys.platform.startswith("linux")
 SIZE = 400          # window size (room for shadow + hover pop)
 R_OUT = 158         # outer radius of petals
 R_IN = 60           # inner radius of petals
@@ -154,6 +155,17 @@ class RadialMenu(QWidget):
                 if self.got_drag or paths is None:
                     # belt and braces: Finder's drag picture (icon + name label) sits on the
                     # cursor; erase that area — it ends up under the hub, blurred anyway
+                    cx, cy = pos.x() - tl.x(), pos.y() - tl.y()
+                    raw = glass.inpaint_rects(raw, [(cx - 70, cy - 64, cx + 70, cy + 64)])
+                shot = QPixmap.fromImage(glass.qimage_from_pil(raw))
+            elif IS_LINUX:
+                # the shell extension's capture, else the wallpaper, else Qt's grab
+                raw = glass.grab_screen(tl.x(), tl.y(), SIZE, SIZE)
+                if raw is None:
+                    raise RuntimeError("capture failed")
+                if glass.LAST_SOURCE == "capture" and paths is None:
+                    # belt and braces as on macOS: erase a drag picture a screen capture
+                    # might still hold (a wallpaper crop never does)
                     cx, cy = pos.x() - tl.x(), pos.y() - tl.y()
                     raw = glass.inpaint_rects(raw, [(cx - 70, cy - 64, cx + 70, cy + 64)])
                 shot = QPixmap.fromImage(glass.qimage_from_pil(raw))

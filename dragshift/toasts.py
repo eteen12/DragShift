@@ -32,6 +32,10 @@ def reveal(path: str | Path):
     elif sys.platform == "darwin":
         subprocess.Popen(["open", "-R", path])
     else:
+        if sys.platform.startswith("linux"):
+            from . import platform_linux
+            if platform_linux.reveal(path):
+                return
         subprocess.Popen(["xdg-open", str(Path(path).parent)])
 
 
