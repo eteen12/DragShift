@@ -19,6 +19,20 @@
       <arg name="y" type="i" direction="out"/>
       <arg name="mask" type="u" direction="out"/>
     </method>
+    <!-- Window placement (#10). Native Wayland clients cannot place or raise their own
+         windows, so DragShift's menu and toasts ask here. Puts the CALLER's own window
+         titled `title` (matched by the caller's pid, never another app's window) with its
+         frame's top-left at (x, y) in stage (logical) pixels, keeps it above other windows
+         and hands the keyboard focus back to the window that had it. When no such window
+         is mapped yet, the placement is remembered and applied as it maps, before its
+         first frame; the latest call per title wins and the rules are dropped when the
+         caller leaves the bus. Returns whether a mapped window was moved now. -->
+    <method name="PlaceWindow">
+      <arg name="title" type="s" direction="in"/>
+      <arg name="x" type="i" direction="in"/>
+      <arg name="y" type="i" direction="in"/>
+      <arg name="placed" type="b" direction="out"/>
+    </method>
     <!-- Escape (#24). WatchEscape(true) grabs Escape as a global accelerator for the
          caller and returns whether the grab is held; EscapePressed is emitted on every
          press while it is. WatchEscape(false) releases it (returns false). The grab ends

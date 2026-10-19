@@ -127,6 +127,22 @@ def extension_available() -> bool:
     return _answered
 
 
+# ---------------------------------------------------------------- window placement
+def place_window(title: str, x: int, y: int) -> bool:
+    """Ask the shell extension to put this process's window titled `title` with its
+    frame's top-left at (x, y) (global logical px), keep it above other windows and hand
+    the keyboard focus straight back whenever it gets it. DragShift runs as a native
+    Wayland client (#10), which can neither place nor raise its own windows.
+
+    Call it right before show() for a window about to map (the extension applies it
+    before the first frame) and again to move a mapped one; the latest call per title
+    wins. True when a mapped window moved now; False when the placement was only
+    remembered for the next map, or the extension doesn't answer (then Mutter places the
+    window itself). Never raises."""
+    body = _call("PlaceWindow", "sii", title, int(x), int(y))
+    return bool(body and body[0])
+
+
 # ---------------------------------------------------------------- Escape (#24)
 # WatchEscape/EscapePressed need a connection that receives signals, so they get their
 # own (a jeepney DBusRouter with a receiver thread), opened by watch_escape(True) and

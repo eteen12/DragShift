@@ -57,10 +57,11 @@ def built_dir(built_zip, tmp_path_factory) -> Path:
 # ------------------------------------------------------------------ build, no shell
 def test_build_zip_contents(built_zip):
     with zipfile.ZipFile(built_zip) as z:
-        assert sorted(z.namelist()) == ["dbus.xml", "extension.js", "metadata.json"]
+        assert sorted(z.namelist()) == ["dbus.xml", "extension.js", "metadata.json",
+                                        "placement.js"]
         meta = json.loads(z.read("metadata.json"))
-        assert z.read("extension.js") == (SRC / "extension.js").read_bytes()
-        assert z.read("dbus.xml") == (SRC / "dbus.xml").read_bytes()
+        for name in ("extension.js", "placement.js", "dbus.xml"):
+            assert z.read(name) == (SRC / name).read_bytes(), name
     assert meta == {**json.loads((SRC / "metadata.json").read_text()),
                     "version-name": __version__}
     assert meta["uuid"] == UUID and meta["name"] == "DragShift"
@@ -104,6 +105,9 @@ def test_dbus_xml_matches_python_client():
     pointer = iface.find("method[@name='GetPointer']")
     assert [(a.get("name"), a.get("type"), a.get("direction")) for a in pointer.findall("arg")] \
         == [("x", "i", "out"), ("y", "i", "out"), ("mask", "u", "out")]
+    place = iface.find("method[@name='PlaceWindow']")
+    assert [(a.get("name"), a.get("type"), a.get("direction")) for a in place.findall("arg")] \
+        == [("title", "s", "in"), ("x", "i", "in"), ("y", "i", "in"), ("placed", "b", "out")]
     js = (SRC / "extension.js").read_text()
     assert f"BUS_NAME = '{lx.BUS_NAME}'" in js
     assert f"OBJECT_PATH = '{lx.OBJECT_PATH}'" in js
