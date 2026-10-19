@@ -8,7 +8,13 @@
 // D-Bus: io.github.eteen12.DragShiftTest at /io/github/eteen12/DragShiftTest.
 // GNOME 46 refuses org.gnome.Shell.Screenshot to callers that are not allowlisted, so
 // tests take screenshots through this extension instead.
+//
+// Input injection uses Clutter virtual input devices of this shell's own seat. They are
+// in-process: no uinput or /dev/input device is created, so events only reach this
+// shell. As a second line of defence they are only created when the shell is headless
+// AND runs from a launcher session root; anywhere else the input methods return an error.
 
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -19,6 +25,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 const BUS_NAME = 'io.github.eteen12.DragShiftTest';
 const OBJECT_PATH = '/io/github/eteen12/DragShiftTest';
 const SESSION_ROOT_PREFIX = 'dragshift-session-';
+// Longest an input call waits for its events to be handled before it replies anyway.
+const FLUSH_TIMEOUT_MS = 1000;
 
 const IFACE = `
 <node>
@@ -47,6 +55,25 @@ const IFACE = `
       <arg type="i" direction="out" name="x"/>
       <arg type="i" direction="out" name="y"/>
       <arg type="u" direction="out" name="mask"/>
+    </method>
+    <method name="MovePointer">
+      <arg type="i" direction="in" name="x"/>
+      <arg type="i" direction="in" name="y"/>
+      <arg type="i" direction="out" name="x"/>
+      <arg type="i" direction="out" name="y"/>
+    </method>
+    <method name="Button">
+      <arg type="u" direction="in" name="button"/>
+      <arg type="b" direction="in" name="pressed"/>
+    </method>
+    <method name="Key">
+      <arg type="u" direction="in" name="keyval"/>
+      <arg type="b" direction="in" name="pressed"/>
+    </method>
+    <method name="TypeText">
+      <arg type="s" direction="in" name="text"/>
+    </method>
+    <method name="ReleaseAll">
     </method>
   </interface>
 </node>`;
@@ -102,9 +129,93 @@ function describe(actor, stacking, focus) {
     };
 }
 
+// Keysym for a character, like Gdk.unicode_to_keyval: Latin-1 keysyms equal the code
+// point, everything else is 0x01000000 + code point. Mutter types a keysym only when the
+// session's keymap has a keycode for it (the default "us" layout covers ASCII).
+const CONTROL_KEYSYMS = {'\n': 0xff0d, '\r': 0xff0d, '\t': 0xff09, '\b': 0xff08};
+
+function keyvalFor(ch) {
+    if (ch in CONTROL_KEYSYMS)
+        return CONTROL_KEYSYMS[ch];
+    const cp = ch.codePointAt(0);
+    if ((cp >= 0x20 && cp <= 0x7e) || (cp >= 0xa0 && cp <= 0xff))
+        return cp;
+    return 0x01000000 + cp;
+}
+
+// Virtual pointer and keyboard on this shell's own Clutter seat. Remembers what is held
+// so release() can let go of everything (a failed test must not leave Shift down).
+class Input {
+    constructor() {
+        const seat = Clutter.get_default_backend().get_default_seat();
+        this._pointer = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+        this._keyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        this._buttons = new Set();
+        this._keys = new Set();
+    }
+
+    move(x, y) {
+        this._pointer.notify_absolute_motion(Clutter.CURRENT_TIME, x, y);
+    }
+
+    button(button, pressed) {
+        this._pointer.notify_button(Clutter.CURRENT_TIME, button,
+            pressed ? Clutter.ButtonState.PRESSED : Clutter.ButtonState.RELEASED);
+        if (pressed)
+            this._buttons.add(button);
+        else
+            this._buttons.delete(button);
+    }
+
+    key(keyval, pressed) {
+        this._keyboard.notify_keyval(Clutter.CURRENT_TIME, keyval,
+            pressed ? Clutter.KeyState.PRESSED : Clutter.KeyState.RELEASED);
+        if (pressed)
+            this._keys.add(keyval);
+        else
+            this._keys.delete(keyval);
+    }
+
+    release() {
+        for (const keyval of [...this._keys].reverse())
+            this.key(keyval, false);
+        for (const button of [...this._buttons])
+            this.button(button, false);
+    }
+
+    // Disposing a virtual device removes it from the seat right away (not at GC).
+    destroy() {
+        this.release();
+        this._pointer.run_dispose();
+        this._keyboard.run_dispose();
+        this._pointer = null;
+        this._keyboard = null;
+    }
+}
+
+class RefusedError extends Error {}
+
+// Why input injection is refused here, or null when it is allowed: only in a headless
+// shell started by the test launcher (tests/linux/session.py), never on a real desktop.
+function inputRefusal() {
+    if (!global.backend.is_headless())
+        return 'the shell is not headless';
+    if (!sessionRoot())
+        return 'not running in a DragShift test session';
+    return null;
+}
+
 class Helper {
-    constructor(version) {
+    constructor(version, input, refusal) {
         this._version = version;
+        this._input = input;
+        this._refusal = refusal;
+    }
+
+    _checkInput() {
+        if (!this._input)
+            throw new RefusedError(`input injection refused: ${this._refusal}`);
+        return this._input;
     }
 
     Version() {
@@ -176,12 +287,109 @@ class Helper {
         const [x, y, mask] = global.get_pointer();
         return [x, y, mask];
     }
+
+    // Every input method returns only after the shell has handled its events. The seat
+    // processes virtual events on Mutter's input thread, and the stage delivers motion
+    // to clients on its next frame while keys and buttons go out at once. Without this a
+    // key release sent right after a move could reach the client before the move.
+
+    // Absolute motion in stage coordinates. Waits until the seat's pointer has reached
+    // the target (clamped to the stage, as Mutter clamps it), then for the stage to
+    // dispatch it. Returns the pointer position.
+    MovePointerAsync([x, y], invocation) {
+        this._inject(invocation, input => {
+            input.move(x, y);
+            return [Math.max(0, Math.min(x, global.stage.width - 1)),
+                Math.max(0, Math.min(y, global.stage.height - 1))];
+        }, () => new GLib.Variant('(ii)', global.get_pointer().slice(0, 2)));
+    }
+
+    // button: 1 primary, 2 middle, 3 secondary (Clutter numbering).
+    ButtonAsync([button, pressed], invocation) {
+        this._inject(invocation, input => input.button(button, pressed));
+    }
+
+    // keyval: an X keysym (Shift_L 0xffe1, Escape 0xff1b, Return 0xff0d, 'a' 0x61, ...).
+    // A pressed key stays down until it is released explicitly.
+    KeyAsync([keyval, pressed], invocation) {
+        this._inject(invocation, input => input.key(keyval, pressed));
+    }
+
+    TypeTextAsync([text], invocation) {
+        this._inject(invocation, input => {
+            for (const ch of text) {
+                const keyval = keyvalFor(ch);
+                input.key(keyval, true);
+                input.key(keyval, false);
+            }
+        });
+    }
+
+    // Releases every key and button pressed through this helper.
+    ReleaseAllAsync(_params, invocation) {
+        this._inject(invocation, input => input.release());
+    }
+
+    // Runs send(input); if it returns a target [x, y], first waits for the seat's pointer
+    // to get there. Then waits for two stage updates, so any event the input thread
+    // handed to the main loop meanwhile has been dispatched, and replies with reply().
+    _inject(invocation, send, reply = () => null) {
+        let target;
+        try {
+            target = send(this._checkInput());
+        } catch (e) {
+            invocation.return_dbus_error(e instanceof RefusedError
+                ? 'org.freedesktop.DBus.Error.AccessDenied'
+                : 'org.freedesktop.DBus.Error.Failed', e.message);
+            return;
+        }
+        const stage = global.stage;
+        const deadline = GLib.get_monotonic_time() + FLUSH_TIMEOUT_MS * 1000;
+        let updates = 0, updateId = 0, timeoutId = 0;
+        const done = () => {
+            if (updateId)
+                stage.disconnect(updateId);
+            if (timeoutId)
+                GLib.source_remove(timeoutId);
+            updateId = timeoutId = 0;
+            invocation.return_value(reply());
+        };
+        const flush = () => {
+            updateId = stage.connect('after-update', () => {
+                if (++updates >= 2)
+                    done();
+                else
+                    stage.schedule_update();
+            });
+            stage.schedule_update();
+        };
+        const reached = () => {
+            const [px, py] = global.get_pointer();
+            return !target || (px === target[0] && py === target[1]);
+        };
+        // Fallback so a call never hangs: reply anyway after FLUSH_TIMEOUT_MS.
+        timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1, () => {
+            if (GLib.get_monotonic_time() > deadline) {
+                timeoutId = 0;
+                done();
+                return GLib.SOURCE_REMOVE;
+            }
+            if (!updateId && reached())
+                flush();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
 }
 
 export default class DragShiftTestExtension extends Extension {
     enable() {
+        const refusal = inputRefusal();
+        this._input = refusal ? null : new Input();
+        if (refusal)
+            console.warn(`${this.uuid}: input injection disabled: ${refusal}`);
         this._dbus = Gio.DBusExportedObject.wrapJSObject(
-            IFACE, new Helper(String(this.metadata.version)));
+            IFACE, new Helper(String(this.metadata.version), this._input, refusal));
         this._dbus.export(Gio.DBus.session, OBJECT_PATH);
         // The headless shell boots into the overview (Ubuntu Dock's "no overview on
         // startup" does not take effect there), unlike a real Ubuntu login. While it is
@@ -234,5 +442,7 @@ export default class DragShiftTestExtension extends Extension {
         }
         this._dbus?.unexport();
         this._dbus = null;
+        this._input?.destroy();
+        this._input = null;
     }
 }
