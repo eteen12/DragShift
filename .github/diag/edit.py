@@ -15,6 +15,10 @@ elif exp == "gc_patched_worker":
     s = s.replace(patch, patch + "    import gc; " + LOG + "gc.collect()" + DONE + "\n", 1)
 elif exp == "gc_genuine_worker":
     s = s.replace(patch, "    import gc; " + LOG + "gc.collect()" + DONE + "\n" + patch, 1)
+elif exp in ("collectable", "gc_genuine_noworker"):
+    dbg = "gc.set_debug(gc.DEBUG_COLLECTABLE); " if exp == "collectable" else ""
+    s = s.replace(patch, "    from PySide6.QtCore import QThreadPool; QThreadPool.globalInstance().waitForDone(); "
+                  "import gc; " + LOG + dbg + "gc.collect()" + DONE + "\n" + patch, 1)
 elif exp == "garbage":
     s = s.replace(patch, "    from PySide6.QtCore import QThreadPool; QThreadPool.globalInstance().waitForDone(); "
                   "import gc, collections; gc.set_debug(gc.DEBUG_SAVEALL); gc.collect(); gc.set_debug(0); "

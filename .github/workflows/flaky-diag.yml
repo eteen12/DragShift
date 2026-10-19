@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest]
-        exp: [gc_patched_noworker, gc_patched_worker, gc_genuine_worker, garbage]
+        exp: [collectable, all, wording, logging, linux, core]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -31,18 +31,28 @@ jobs:
           EXP: ${{ matrix.exp }}
         run: |
           args=""
+          T=tests/test_result_actions.py
           case "$EXP" in
-            *) python .github/diag/edit.py "$EXP" ;;
+            collectable) python .github/diag/edit.py collectable ;;
+            all) python .github/diag/edit.py gc_genuine_noworker ;;
+            wording) python .github/diag/edit.py gc_genuine_noworker; args="tests/test_linux_wording.py $T" ;;
+            logging) python .github/diag/edit.py gc_genuine_noworker; args="tests/test_logging.py $T" ;;
+            linux) python .github/diag/edit.py gc_genuine_noworker; args="tests/test_linux.py $T" ;;
+            core) python .github/diag/edit.py gc_genuine_noworker; args="tests/test_core.py tests/test_formats.py tests/test_linux_autostart.py $T" ;;
           esac
           fails=0
-          for i in $(seq 1 20); do
+          for i in $(seq 1 6); do
             if python -m pytest -q -s -p no:cacheprovider -p diagplug $args > out.txt 2>&1; then
-              echo "run $i: ok ($(tail -1 out.txt))"; grep "\[diag\] garbage" out.txt | head -1 | cut -c1-3000
+              echo "run $i: ok ($(tail -1 out.txt))"
             else
               fails=$((fails+1))
               echo "::group::run $i FAILED"
-              grep -v -E '^\s*File ".*(_pytest|pluggy)' out.txt | tail -60
+              grep -v -E '^\s*File ".*(_pytest|pluggy)|gc: collectable' out.txt | tail -40
+              grep -o 'gc: collectable <[A-Za-z0-9_.]*' out.txt | sort | uniq -c | sort -rn | head -80 || true
               echo "::endgroup::"
+            fi
+            if [ "$EXP" = collectable ] && [ $i = 1 ]; then
+              grep -o 'gc: collectable <[A-Za-z0-9_.]*' out.txt | sort | uniq -c | sort -rn | head -80 || true
             fi
           done
           echo "failed runs: $fails"
