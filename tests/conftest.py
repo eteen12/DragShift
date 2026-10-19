@@ -28,9 +28,6 @@ for _var, _sub in (("XDG_CONFIG_HOME", "config"), ("XDG_STATE_HOME", "state"),
                    ("XDG_DATA_HOME", "data"), ("XDG_CACHE_HOME", "cache")):
     (_XDG_ROOT / _sub).mkdir()
     os.environ[_var] = str(_XDG_ROOT / _sub)
-# No real session bus: a D-Bus call from a test (e.g. Show in folder) must never reach the
-# user's desktop. Tests that need a bus start their own or use the isolated GNOME session.
-os.environ["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + str(_XDG_ROOT / "no-session-bus")
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +36,18 @@ def _no_real_libreoffice(request, monkeypatch):
         return
     from dragshift import platform_linux
     monkeypatch.setattr(platform_linux, "soffice_binary", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_session_bus(request, monkeypatch):
+    """A D-Bus call from a test (e.g. Show in folder) must never reach the user's desktop, so
+    tests get a session bus address that does not exist. Tests that need a bus start their own
+    dbus-daemon or use the isolated GNOME session. Left alone for `gnome` tests (their
+    processes get the session's bus, and they check the test process is unchanged) and for
+    `libreoffice` tests (`snap run` needs the real bus to start LibreOffice's systemd scope)."""
+    if not any(request.node.get_closest_marker(m) for m in ("gnome", "libreoffice")):
+        monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS",
+                           "unix:path=" + str(_XDG_ROOT / "no-session-bus"))
 
 
 def pytest_unconfigure(config):
