@@ -14,7 +14,7 @@ touched:
   start system services. `XDG_SESSION_ID` also points at a session that does not exist.
 - Ubuntu's desktop-icons extension (DING) kills every `gjs <its path>/app/ding.js` of the
   same user when it is enabled, which would kill the real desktop's icons. The session runs
-  a private copy from its own XDG_DATA_HOME, so it only ever matches its own copy.
+  a private copy from <root>/share (first in XDG_DATA_DIRS), so it only matches that copy.
 - Teardown kills the session's process groups and every process whose environment carries
   the session's unique XDG_RUNTIME_DIR (ibus-daemon and apps started via D-Bus leave the
   process group), then removes the temporary directories.
@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import functools
 import json
 import os
 import re
@@ -105,6 +106,7 @@ def missing_tools() -> list[str]:
     return missing
 
 
+@functools.lru_cache(maxsize=None)
 def gi_python() -> str | None:
     """A system python3 that can import gi (runs fake_systemd.py)."""
     for py in dict.fromkeys(("/usr/bin/python3", shutil.which("python3") or "")):
