@@ -71,7 +71,7 @@ The monitor is 1600x900 logical at 100 % unless a row says otherwise. Menu centr
 | Open latency: show → compositor's first frame at the target (spike, n = 20) | 4.4 ms median, p90 5.9 | 21.0 ms, first map only | 8.1 ms median, p90 8.8, already at the target (no flash elsewhere), no map animation | 7.1–12.6 ms (n = 3), wrong place, with the shell's zoom-in animation |
 | Open latency: show → listed at its place (test, n = 10) | 12.2 ms median | n/a | 11.8 ms median | n/a |
 | Shift+drag from Files | **Move only** offered and taken; URI at enter and drop; source kept | never reached (overlay below Files) | Copy and Move offered, **Copy** taken; URI at enter and drop; source kept | n/a |
-| Shift+drag from the desktop | **Move only**; drop payload **empty** in Docker (as in #19); URI at enter; source kept | not tested | Copy taken; URI at enter and drop; source kept | n/a |
+| Shift+drag from the desktop | **Move only**; URI at enter and drop; source kept | not tested | Copy taken; URI at enter and drop; source kept | n/a |
 | `QScreen.grabWindow` | 400x400, 100 % black | n/a | null image (0x0) | null image |
 | 200 %: device pixel ratio | 1.0, so Mutter upscales the window 2x: 12 blurred pixels along a row crossing six 1-px lines, blurry text | n/a | 2.0, crisp: 0 blurred pixels on the same row | 2.0 |
 | 200 %: coordinates | logical; the frame lands on the requested logical pixel; `GetPointer` (900, 500) = injected | n/a | logical, the same | n/a |
@@ -103,8 +103,7 @@ Option (c): native Wayland, placed by the extension.
   `devicePixelRatio` is 1 and the line edges blur. It also needs a system library that a
   default Ubuntu desktop lacks, vendored without sudo. And Xwayland's DnD bridge only
   offers Move while Shift is held. That is safe today, because Files and DING never
-  delete the source, but it is the wrong request, and the desktop's drop payload can
-  come back empty.
+  delete the source, but it is the wrong request.
 - (b) is rejected. A fullscreen window hides the top bar, the dock and the wallpaper.
   It takes the focus, falls below Files as soon as Files is used, and stays in the dock
   and Alt+Tab.
@@ -134,6 +133,22 @@ Option (c): native Wayland, placed by the extension.
 - **Drops (#35):** `CopyAction` is honoured. No Move mitigation is needed. Keep reading
   the paths in `dragEnterEvent` anyway. Mutter focuses the drop target, and the
   extension gives the focus back.
+- **Known limitation, drags from the desktop (#102):** now and then a drag from DING
+  offers `text/uri-list` but carries no data, under Wayland and Xwayland alike. This is
+  a GTK 3 bug in DING, not a backend difference. DING runs in gjs, so a finished drag's
+  `GdkDragContext` is only freed when the JS garbage collector runs. GTK 3's Wayland
+  finalizer then clears the display's current drag source, because every DING drag
+  starts from the same desktop window
+  (`gdk_wayland_drag_context_finalize` → `gdk_wayland_selection_unset_data_source`).
+  If that happens during a later drag, GTK closes each `wl_data_source.send` of it
+  unanswered. A `WAYLAND_DEBUG` trace of DING shows it: the failing drags, and only
+  they, destroy older data sources mid-drag and never emit `drag-data-get`. Every read
+  of that drag is empty, at enter, later and at the drop, so DragShift cannot recover
+  the paths. The menu ignores such a drag (`RadialMenu.dragEnterEvent`), and the next
+  drag works. In the isolated session it hit 17 of 196 drags after an earlier DING
+  drag (8.7 %), and 0 of 40 drags that were the first of a fresh DING. The tests start
+  each desktop drag from a fresh DING (`Files.restart_desktop`). Files (GTK 4) is not
+  affected.
 - **Toasts (#42):** `availableGeometry()` is the whole monitor under Wayland, so the work
   area must come from the extension. That is a new method in #42, using
   `Main.layoutManager.getWorkAreaForMonitor`. Place each card with `place_window`;

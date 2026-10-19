@@ -279,13 +279,17 @@ def test_shift_drag_into_the_menu(session, shell, files, files_window, platform,
     the file enters it as text/uri-list and the source file stays.
     - native Wayland (c): Copy and Move are offered and CopyAction is taken;
     - Xwayland (a): with Shift held the bridge offers only MoveAction (#19), the source
-      still stays because neither Files nor DING delete on a move to another app."""
+      still stays because neither Files nor DING delete on a move to another app.
+    Each desktop drag is the first one of a fresh DING: from a second drag on, GTK 3 can
+    drop the payload on either platform when DING's garbage collector frees an earlier
+    drag mid-drag (Files.restart_desktop, #102)."""
     if platform == "xcb":
         _xcb(session)
     if source == "files":
         start = files.icon_center("Photo.jpg", "nautilus")
         path = files_window.folder / "Photo.jpg"
     else:
+        files.restart_desktop()
         files.put_on_desktop({"Desk.jpg": PHOTO})
         start = files.icon_center("Desk.jpg", "desktop")
         path = files.desktop_dir() / "Desk.jpg"
