@@ -142,7 +142,9 @@ Option (c): native Wayland, placed by the extension.
   capture → wallpaper contract (#26, #27).
 - **Click mode (#36):** the menu never holds the keyboard focus. Outside clicks have to
   come from the pointer state, as #36 already plans. `grabMouse` under Wayland was not
-  measured here.
+  measured here. #36 measured it: no click on another app ever reaches the grabbing
+  window. The Linux click mode therefore uses the extension's `WatchEscape` and a
+  `GetPointer` poll instead (`docs/LINUX-DEV.md`, "Click mode").
 - **Dock and Alt+Tab (#95):** under (c) alone, while the menu or a toast is visible, the
   dock shows a DragShift app icon and Alt+Tab lists the window. #95 adds (c′) on top: the
   app asks the extension to start it as a `Meta.WaylandClient` (`Launch`), and the
