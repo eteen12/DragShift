@@ -61,7 +61,14 @@ class DragShiftService {
     // PNG encoding is nearly all of the cost (~40 ms for 400x400 of a photo), so the
     // rect is painted as up to CAPTURE_MAX_STRIPS horizontal strips whose PNGs are
     // encoded in parallel threads; the app stacks them.
-    CaptureAreaAsync([x, y, width, height], invocation) {
+    CaptureAreaAsync(params, invocation) {
+        this._serveCapture(params, invocation, () => []);
+    }
+
+    // Validate and clamp the rect, run the capture after the previous one, reply
+    // (x, y, width, height, strips) or a D-Bus error. extraHidden() gives more actors to
+    // hide during the paint; it may return a Promise and runs in this capture's turn.
+    _serveCapture([x, y, width, height], invocation, extraHidden) {
         if (width <= 0 || height <= 0) {
             invocation.return_dbus_error('org.freedesktop.DBus.Error.InvalidArgs',
                 `empty area ${width}x${height}`);
@@ -78,7 +85,8 @@ class DragShiftService {
         const ay = new GLib.VariantType('ay');
         // One capture at a time: the next starts once the previous PNGs are written.
         this._captures = (this._captures ?? Promise.resolve())
-            .then(() => this._captureArea(x0, y0, x1 - x0, y1 - y0))
+            .then(() => extraHidden())
+            .then(extra => this._captureArea(x0, y0, x1 - x0, y1 - y0, extra))
             .then(strips => invocation.return_value(GLib.Variant.new_tuple([
                 ...[x0, y0, x1 - x0, y1 - y0].map(v => new GLib.Variant('i', v)),
                 GLib.Variant.new_array(ay,
@@ -87,14 +95,15 @@ class DragShiftService {
                 String(e?.message ?? e)));
     }
 
-    // Promise of the PNGs (GLib.Bytes) of the rect's strips, top to bottom.
-    _captureArea(x, y, width, height) {
+    // Promise of the PNGs (GLib.Bytes) of the rect's strips, top to bottom. `extra`:
+    // more actors to hide during the paint (see CaptureAreaExcludingCaller).
+    _captureArea(x, y, width, height, extra = []) {
         const n = Math.max(1, Math.min(CAPTURE_MAX_STRIPS, height,
             Math.round(width * height / CAPTURE_STRIP_PIXELS)));
         const shots = [];
         const hidden = [global.compositor.get_feedback_group(),
             ...global.get_window_actors().filter(a =>
-                a.get_meta_window()?.get_window_type() === Meta.WindowType.DND)]
+                a.get_meta_window()?.get_window_type() === Meta.WindowType.DND), ...extra]
             .filter(a => a.visible);
         hidden.forEach(a => a.hide());
         try {
@@ -119,6 +128,45 @@ class DragShiftService {
             hidden.forEach(a => a.show());
         }
         return Promise.all(shots);
+    }
+
+    // ------------------------------------------------ CaptureAreaExcludingCaller (#28)
+    // CaptureArea that also leaves out every window of the calling process, so the app
+    // can re-capture what is behind its own visible toasts and tool windows. The caller
+    // is identified by the bus, not by anything it sends: its pid from the bus daemon,
+    // matched against Meta.Window.get_pid() (Wayland client credentials, or XRes for
+    // Xwayland windows). Those actors are hidden in the same synchronous paint as the
+    // drag icon, so they never disappear from the screen.
+    CaptureAreaExcludingCallerAsync(params, invocation) {
+        this._serveCapture(params, invocation,
+            () => this._callerPid(invocation).then(pid => this._windowActorsOf(pid)));
+    }
+
+    // Promise of the pid of the process that sent `invocation`, from the bus daemon
+    // (org.freedesktop.DBus.GetConnectionUnixProcessID). The one place a method asks who
+    // its caller is (#93 verifies the caller with it).
+    _callerPid(invocation) {
+        return new Promise((resolve, reject) => {
+            invocation.get_connection().call('org.freedesktop.DBus',
+                '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                'GetConnectionUnixProcessID',
+                new GLib.Variant('(s)', [invocation.get_sender()]),
+                new GLib.VariantType('(u)'), Gio.DBusCallFlags.NONE, 1000, null,
+                (conn, res) => {
+                    try {
+                        resolve(conn.call_finish(res).deepUnpack()[0]);
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+        });
+    }
+
+    // Window actors whose window belongs to process `pid` (none for an unknown pid).
+    _windowActorsOf(pid) {
+        if (!(pid > 0))
+            return [];
+        return global.get_window_actors().filter(a => a.get_meta_window()?.get_pid() === pid);
     }
 }
 

@@ -311,3 +311,23 @@ so nothing written into it reaches JavaScript.
 ```sh
 uv run pytest tests/linux/test_capture.py -s   # incl. a real Nautilus drag; prints timings
 ```
+
+#### Behind DragShift's own windows (`exclude_self`)
+
+`capture(..., exclude_self=True)` also leaves out every window of the calling process,
+so a visible toast or tool window can re-capture what is behind it (`glass.grab_screen`
+with `below_window` set, which `LiquidBacking` uses for a visible window). It calls
+`CaptureAreaExcludingCaller`. The extension asks the bus daemon for the caller's pid
+(`GetConnectionUnixProcessID`) and hides every window actor whose `Meta.Window.get_pid()`
+matches. That works for native Wayland and Xwayland windows alike. The windows are hidden
+in the same synchronous paint as the drag icon, so they never leave the screen. A
+minimised window stays minimised. The app sends no pid or window id, so it can't hide
+another app's windows. An extension without the method gives None, and `grab_screen`
+falls back to the wallpaper.
+
+The windows and the capture must be in one process, so `tests/linux/own_window.py` runs
+both inside the session:
+
+```sh
+uv run pytest tests/linux/test_capture_exclude.py -s   # own windows over Files; timings
+```

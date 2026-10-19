@@ -60,5 +60,21 @@
       <arg name="area_height" type="i" direction="out"/>
       <arg name="strips" type="aay" direction="out"/>
     </method>
+    <!-- CaptureAreaExcludingCaller (#28): CaptureArea that also leaves out every window
+         of the calling process (its pid from the bus daemon, matched against the
+         windows' pids), hidden only during the same offscreen paint. Lets the app
+         re-capture what is behind its own visible toasts and tool windows. Arguments,
+         reply and errors as CaptureArea; queued with it. -->
+    <method name="CaptureAreaExcludingCaller">
+      <arg name="x" type="i" direction="in"/>
+      <arg name="y" type="i" direction="in"/>
+      <arg name="width" type="i" direction="in"/>
+      <arg name="height" type="i" direction="in"/>
+      <arg name="area_x" type="i" direction="out"/>
+      <arg name="area_y" type="i" direction="out"/>
+      <arg name="area_width" type="i" direction="out"/>
+      <arg name="area_height" type="i" direction="out"/>
+      <arg name="strips" type="aay" direction="out"/>
+    </method>
   </interface>
 </node>
