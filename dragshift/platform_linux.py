@@ -15,6 +15,7 @@ import functools
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 # Clutter.ModifierType bits, as the shell extension reports them in `modifier_mask`
@@ -176,13 +177,73 @@ def _decode_zoom(path: str, mw: int, mh: int, bg: tuple[int, int, int]):
     return im.resize((mw, mh), Image.BICUBIC, box=box, reducing_gap=2.0)
 
 
-# ---------------------------------------------------------------- desktop integration
+# ---------------------------------------------------------------- start at login
+def autostart_path() -> Path:
+    """$XDG_CONFIG_HOME/autostart/dragshift.desktop (an unset or relative value means ~/.config)."""
+    conf = os.environ.get("XDG_CONFIG_HOME", "")
+    base = Path(conf) if os.path.isabs(conf) else Path.home() / ".config"
+    return base / "autostart" / "dragshift.desktop"
+
+
+def launch_args() -> list[str]:
+    """How to start DragShift quietly: the installed launcher, else this Python."""
+    launcher = Path.home() / ".local" / "bin" / "dragshift"
+    if launcher.is_file():
+        return [str(launcher), "--quiet"]
+    return [sys.executable, "-m", "dragshift", "--quiet"]
+
+
+def _escape(value: str) -> str:
+    """A desktop-file string value: backslash, newline, tab and CR escaped."""
+    return (value.replace("\\", "\\\\").replace("\n", "\\n").replace("\t", "\\t")
+            .replace("\r", "\\r"))
+
+
+def _exec_quote(arg: str) -> str:
+    """One Exec argument per the Desktop Entry spec: `%` doubled, an argument with reserved
+    characters put in double quotes (with " ` $ \\ escaped), then the string escapes."""
+    arg = arg.replace("%", "%%")
+    if any(c in arg for c in " \t\n\"'\\><~|&;$*?#()`"):
+        arg = '"' + "".join("\\" + c if c in '"`$\\' else c for c in arg) + '"'
+    return _escape(arg)
+
+
+def launch_command(args: list[str] | None = None) -> str:
+    """launch_args() as a desktop-file Exec value."""
+    return " ".join(_exec_quote(a) for a in (args or launch_args()))
+
+
 def autostart_enabled() -> bool:
-    return False
+    try:
+        return autostart_path().is_file()
+    except OSError:
+        return False
 
 
 def set_autostart(on: bool) -> None:
-    return None
+    """Write or delete the autostart entry. Never raises; a failure is logged to stderr."""
+    path = autostart_path()
+    try:
+        if not on:
+            path.unlink(missing_ok=True)
+            return
+        args = launch_args()
+        lines = ["[Desktop Entry]", "Type=Application", "Name=DragShift",
+                 "Comment=Shift+drag any file to convert or edit it",
+                 f"Exec={launch_command(args)}"]
+        if args[1:2] == ["-m"]:          # no launcher: `-m dragshift` needs this checkout as cwd
+            lines.append("Path=" + _escape(str(Path(__file__).resolve().parent.parent)))
+        lines += ["Icon=dragshift", "Terminal=false", "X-GNOME-Autostart-enabled=true", "NoDisplay=false"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmp.replace(path)
+    except OSError as e:
+        print(f"DragShift: could not {'enable' if on else 'disable'} autostart at {path}: {e}",
+              file=sys.stderr)
+
+
+# ---------------------------------------------------------------- desktop integration
 
 
 def reveal(path: str | Path) -> bool:
