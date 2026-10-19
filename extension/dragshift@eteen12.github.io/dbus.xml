@@ -81,5 +81,17 @@
       <arg name="area_height" type="i" direction="out"/>
       <arg name="strips" type="aay" direction="out"/>
     </method>
+    <!-- GetWorkArea (#42): the work area (monitor minus the top bar and a fixed dock,
+         Main.layoutManager.getWorkAreaForMonitor) of the monitor that contains (x, y),
+         else of the primary monitor, in stage (logical) pixels. Toasts stack at its
+         bottom right; under Wayland Qt only knows the whole monitor. Read-only. -->
+    <method name="GetWorkArea">
+      <arg name="x" type="i" direction="in"/>
+      <arg name="y" type="i" direction="in"/>
+      <arg name="area_x" type="i" direction="out"/>
+      <arg name="area_y" type="i" direction="out"/>
+      <arg name="area_width" type="i" direction="out"/>
+      <arg name="area_height" type="i" direction="out"/>
+    </method>
   </interface>
 </node>

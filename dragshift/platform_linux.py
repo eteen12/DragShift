@@ -161,6 +161,19 @@ def place_window(title: str, x: int, y: int) -> bool:
     return bool(body and body[0])
 
 
+# ---------------------------------------------------------------- work area (#42)
+def work_area(x: int, y: int) -> tuple[int, int, int, int] | None:
+    """`(x, y, width, height)` of the work area of the monitor that contains (x, y) (else
+    the primary monitor), in global logical px: the monitor minus the top bar and a fixed
+    dock, as GNOME Shell computes it. Under Wayland Qt's availableGeometry() is the whole
+    monitor, so this comes from the shell extension. None when the extension doesn't
+    answer or is too old for GetWorkArea. Never raises."""
+    body = _call("GetWorkArea", "ii", int(x), int(y))
+    if not body or len(body) != 4 or body[2] <= 0 or body[3] <= 0:
+        return None
+    return tuple(body)
+
+
 # ---------------------------------------------------------------- Escape (#24)
 # WatchEscape/EscapePressed need a connection that receives signals, so they get their
 # own (a jeepney DBusRouter with a receiver thread), opened by watch_escape(True) and
