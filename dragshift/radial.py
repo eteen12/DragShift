@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass
 from typing import Callable
 
-from PySide6.QtCore import (QEasingCurve, QObject, QPoint, QPointF, QRectF, QRunnable, Qt,
+from PySide6.QtCore import (QEasingCurve, QObject, QPoint, QPointF, QRect, QRectF, QRunnable, Qt,
                             QThreadPool, QTimer, QVariantAnimation, Signal)
 from PySide6.QtGui import (QColor, QCursor, QFont, QGuiApplication, QImage, QPainter,
                            QPainterPath, QPen, QPixmap, QRadialGradient)
@@ -29,6 +29,9 @@ class Item:
 
 
 IS_LINUX = sys.platform.startswith("linux")
+# Linux: the shell extension finds the menu by this title (PlaceWindow matches pid + title,
+# so no other DragShift window may use it) to place it, keep it on top and unfocused.
+MENU_TITLE = "DragShift menu"
 SIZE = 400          # window size (room for shadow + hover pop)
 R_OUT = 158         # outer radius of petals
 R_IN = 60           # inner radius of petals
@@ -103,6 +106,8 @@ class RadialMenu(QWidget):
         self.setAcceptDrops(True)
         self.setMouseTracking(True)
         self.resize(SIZE, SIZE)
+        if IS_LINUX:
+            self.setWindowTitle(MENU_TITLE)
 
         self.paths: list[str] = []
         self.rings: dict[str, list[Item]] = {}
@@ -135,12 +140,16 @@ class RadialMenu(QWidget):
 
     # ------------------------------------------------------------ show / hide
     def popup(self, pos: QPoint | None = None, paths: list[str] | None = None):
-        pos = pos or QCursor.pos()
+        if IS_LINUX:
+            pos = QPoint(pos) if pos is not None else self._linux_pointer()
+        else:
+            pos = pos or QCursor.pos()
         tl = pos - QPoint(SIZE // 2, SIZE // 2)
         scr = QGuiApplication.screenAt(pos) or QGuiApplication.primaryScreen()
         g = scr.geometry()
-        tl.setX(min(max(tl.x(), g.left()), g.right() - SIZE))
-        tl.setY(min(max(tl.y(), g.top()), g.bottom() - SIZE))
+        area = self._linux_area(pos, g) if IS_LINUX else g
+        tl.setX(min(max(tl.x(), area.left()), area.right() - SIZE))
+        tl.setY(min(max(tl.y(), area.top()), area.bottom() - SIZE))
         # snapshot what's underneath *before* we appear
         self._serial += 1
         self.liquid = {}
@@ -203,6 +212,8 @@ class RadialMenu(QWidget):
             for n in (4, 7):  # most common rings: render speculatively
                 self._render(n)
         self._t = 0.0
+        if IS_LINUX:
+            self._linux_place(tl)
         self.show()
         self.raise_()
         self.anim.start()
@@ -210,6 +221,38 @@ class RadialMenu(QWidget):
         if self.click_mode:
             # behave like a popup: a click anywhere outside dismisses it
             QTimer.singleShot(0, self.grabMouse)
+
+    @staticmethod
+    def _linux_pointer() -> QPoint:
+        """The pointer from DragShift's shell extension: QCursor.pos() is stale while the
+        pointer is over other apps' Wayland windows. QCursor only when the extension is
+        not there."""
+        from . import platform_linux
+        st = platform_linux.pointer_state()
+        return QPoint(int(st[0]), int(st[1])) if st else QCursor.pos()
+
+    @staticmethod
+    def _linux_area(pos: QPoint, monitor: QRect) -> QRect:
+        """Where the menu may go on GNOME: Mutter keeps windows out of the top bar and a
+        fixed dock (a menu asked for at y = 0 lands at y = 32), and Qt has no work area
+        under Wayland, so the work area of the pointer's monitor comes from the shell
+        extension (`platform_linux.work_area`, #42). Clamping to it keeps the frame, and
+        the backdrop captured for it, where popup() computed them. The monitor when the
+        extension can't tell."""
+        from . import platform_linux
+        work_area = getattr(platform_linux, "work_area", None)   # added by #42
+        wa = work_area(pos.x(), pos.y()) if work_area else None
+        return QRect(*wa) if wa else monitor
+
+    def _linux_place(self, tl: QPoint):
+        """A native Wayland client can't place or raise its own window (#10): ask the shell
+        extension to put the menu's frame at `tl` before its first frame, keep it above
+        Files and the desktop and hand the keyboard focus straight back. Without the
+        extension Mutter places it (degraded mode)."""
+        from . import platform_linux
+        moved = platform_linux.place_window(MENU_TITLE, tl.x(), tl.y())
+        print(f"menu: at ({tl.x()}, {tl.y()}) {SIZE}x{SIZE}, moved now: {moved}, "
+              f"backdrop: {glass.LAST_SOURCE or 'none'}", flush=True)
 
     def close_menu(self):
         if self.isVisible():
