@@ -72,6 +72,18 @@ uv run python -m tests.linux.session -- nautilus --new-window /tmp   # run a com
 uv run python -m tests.linux.session        # print the session env, Ctrl-C to stop
 ```
 
+`--scale 2` (with `--size 3200x1800`, i.e. 1600x900 logical) scales the virtual monitor
+like the user's 200 % screen, with fractional scaling on (`scale-monitor-framebuffer`);
+`--size 2400x1350 --scale 1.5` gives a fractional scale. In Python: `Session(size=...,
+scale=2)` or `session.set_scale(2)`. `Session(data_files={"applications/x.desktop": text})`
+writes files into the session's `XDG_DATA_HOME` before the shell boots (a desktop file
+that appears later is only picked up seconds afterwards).
+
+```sh
+uv run python -m tests.linux.session --size 3200x1800 --scale 2 \
+  --extension /tmp/ext/dragshift@eteen12.github.io -- python -m dragshift
+```
+
 In tests, use the session-scoped `gnome_session` fixture. `gnome_session.env()` is the
 environment for child processes, `gnome_session.run(cmd)` and `gnome_session.popen(cmd)`
 run inside the session, and `gnome_session.log_path` is the shell's log.
@@ -223,6 +235,31 @@ DOCKER_BUILD_ARGS="--build-arg WITH_LIBREOFFICE=1" tests/linux/docker/run.sh   #
 Without `yaru-theme-gnome-shell` (or on another distro) the launcher boots GNOME's
 `user` mode instead of `--mode=ubuntu` and enables the installed Ubuntu default extensions
 itself, so both paths give the same desktop.
+
+## Start-up on Linux
+
+`app.main()` calls `linux_qpa()` before `QApplication` exists and `linux_setup(qapp)` right
+after (`dragshift/app.py`, #11):
+
+- **Qt platform.** A `QT_QPA_PLATFORM` or `-platform` you set always wins. Otherwise
+  `DRAGSHIFT_QPA` picks one (for tests), a Wayland session (`WAYLAND_DISPLAY` set or
+  `XDG_SESSION_TYPE=wayland`, and not `x11`) gets `wayland;xcb` (native Wayland, Xwayland as
+  Qt's fallback, `docs/linux/display-backend.md`), and an X11 session keeps Qt's default.
+  The choice goes to Qt as a `-platform` argument, not as an environment variable, so
+  programs DragShift starts (`xdg-open`, LibreOffice) don't inherit it.
+- **Fonts.** The Segoe UI families the UI asks for are substituted with `Ubuntu Sans`,
+  `Ubuntu`, `Cantarell`, `Noto Sans`, `DejaVu Sans` (the first installed one wins).
+- **App id.** `setDesktopFileName("io.github.eteen12.DragShift")`: every window's Wayland
+  app id, so GNOME (dock, Alt+Tab, tray) matches it to `io.github.eteen12.DragShift.desktop`.
+- **HiDPI.** Nothing extra: with the `PassThrough` rounding policy each window uses the
+  monitor's exact scale, also a fractional one, so text is drawn at device pixels.
+- The log gets `platform: wayland`, one `screen …` line per monitor and the font Segoe UI
+  resolved to.
+
+```sh
+uv run pytest tests/test_linux_startup.py                 # unit tests, offscreen
+uv run pytest -s tests/linux/test_startup.py              # real app in the session, scale 1, 2, 1.5
+```
 
 ## DOCX → PDF and LibreOffice
 

@@ -157,7 +157,8 @@ class ShellHelper:
     def list_windows(self) -> list[dict]:
         """Windows bottom to top. Keys: id, title, wm_class, pid, xid (0 unless X11),
         client ('x11'|'wayland'), frame (x, y, w, h), above, focused, minimized,
-        stacking, window_type ('normal', 'desktop', ...)."""
+        stacking, window_type ('normal', 'desktop', ...), app (the shell's app id, e.g.
+        'org.gnome.Nautilus.desktop', or 'window:N' when no desktop file matches)."""
         windows = self.call("ListWindows")[0]
         for w in windows:
             w["frame"] = tuple(w["frame"])

@@ -243,12 +243,20 @@ class Session:
     helper: also install the test-helper extension (HELPER_EXTENSION) and wait until it
         answers; talk to it with tests.linux.shell.ShellHelper.
     keep: leave the temporary directories in place on stop() (for debugging).
+    scale: monitor scale applied once the shell is up (see set_scale); `size` stays the
+        physical mode, so (3200, 1800) at scale 2 is 1600x900 logical.
+    data_files: {path relative to the session's XDG_DATA_HOME: text}, written before the
+        shell boots (e.g. "applications/<id>.desktop", which the shell only picks up
+        seconds later when it appears while it runs).
     """
 
     def __init__(self, size: tuple[int, int] = (1600, 900), extensions=(),
                  timeout: float = BOOT_TIMEOUT,
-                 shell_args=(), keep: bool = False, helper: bool = False):
+                 shell_args=(), keep: bool = False, helper: bool = False,
+                 scale: float = 1.0, data_files=None):
         self.size = size
+        self.scale = scale
+        self.data_files = dict(data_files or {})
         self.extensions = [Path(e) for e in extensions]
         self.helper = helper
         if helper and HELPER_EXTENSION not in self.extensions:
@@ -304,6 +312,31 @@ class Session:
         """subprocess.Popen inside the session; the process is killed on stop()."""
         return subprocess.Popen(cmd, env=self.env(**kw.pop("env", {})), **kw)
 
+    def set_scale(self, scale: float) -> None:
+        """Scale the virtual monitor like the user's real one (2, with fractional scaling on:
+        Mutter's `scale-monitor-framebuffer`). Only the session's own dconf and display
+        config change. Fractional values need a mode whose size divides by them."""
+        r = self.run(["gsettings", "set", "org.gnome.mutter", "experimental-features",
+                      "['scale-monitor-framebuffer']"])
+        if r.returncode:
+            raise SessionError(f"gsettings failed: {r.stderr.strip()}")
+        dc = ["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.DisplayConfig",
+              "--object-path", "/org/gnome/Mutter/DisplayConfig", "--method"]
+
+        def state() -> str:
+            return self.run(dc + ["org.gnome.Mutter.DisplayConfig.GetCurrentState"]).stdout
+
+        self._wait(lambda: "'layout-mode': <uint32 1>" in state(), 10,
+                   "Mutter did not switch to the logical layout mode")
+        serial = state().split(",", 1)[0].split()[-1]
+        w, h = self.size
+        r = self.run(dc + ["org.gnome.Mutter.DisplayConfig.ApplyMonitorsConfig", serial, "1",
+                           f"[(0, 0, {scale}, 0, true, [('Meta-0', '{w}x{h}@60.000', @a{{sv}} {{}})])]",
+                           "@a{sv} {}"])
+        if r.returncode:
+            raise SessionError(f"ApplyMonitorsConfig at scale {scale} failed: {r.stderr.strip()}")
+        self.scale = scale
+
     def log_tail(self, lines: int = 40) -> str:
         try:
             text = self.log_path.read_text(errors="replace")
@@ -322,6 +355,8 @@ class Session:
         try:
             self._prepare()
             self._boot()
+            if self.scale != 1:
+                self.set_scale(self.scale)
             if self.helper:  # the shell answers before user extensions are enabled
                 from tests.linux.shell import ShellHelper
                 with ShellHelper(self) as helper:
@@ -454,6 +489,12 @@ class Session:
         (services / "org.freedesktop.systemd1.service").write_text(
             "[D-BUS Service]\nName=org.freedesktop.systemd1\n"
             f"Exec={gi_python()} -I {self.root / 'fake_systemd.py'}\n")
+        for rel, text in self.data_files.items():
+            target = dirs["XDG_DATA_HOME"] / rel
+            if dirs["XDG_DATA_HOME"].resolve() not in target.resolve().parents:
+                raise SessionError(f"data file outside XDG_DATA_HOME: {rel}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
         for src in self.extensions:
             if not (src / "metadata.json").is_file():
                 raise SessionError(f"not an extension directory: {src}")
@@ -628,6 +669,8 @@ def main(argv=None) -> int:
                     help="extension directory (named by UUID) to install and enable")
     ap.add_argument("--helper", action="store_true",
                     help="install the test-helper extension (screenshots, window list)")
+    ap.add_argument("--scale", type=float, default=1.0,
+                    help="monitor scale, e.g. 2 with --size 3200x1800 for 1600x900 logical")
     ap.add_argument("--keep", action="store_true", help="keep the temporary directories")
     ap.add_argument("cmd", nargs=argparse.REMAINDER, help="-- command to run")
     a = ap.parse_args(argv)
@@ -641,9 +684,10 @@ def main(argv=None) -> int:
     signal.signal(signal.SIGHUP, _terminate)
     t0 = time.monotonic()
     try:
-        with Session((w, h), extensions=a.extension, keep=a.keep, helper=a.helper) as s:
+        with Session((w, h), extensions=a.extension, keep=a.keep, helper=a.helper,
+                     scale=a.scale) as s:
             print(f"GNOME Shell {s.shell_version} up in {time.monotonic() - t0:.1f} s: "
-                  f"WAYLAND_DISPLAY={s.wayland_display} DISPLAY={s.display} "
+                  f"WAYLAND_DISPLAY={s.wayland_display} DISPLAY={s.display} scale={s.scale:g} "
                   f"log={s.log_path}", file=sys.stderr, flush=True)
             if cmd:
                 return subprocess.run(cmd, env=s.env()).returncode

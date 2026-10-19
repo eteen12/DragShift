@@ -377,35 +377,14 @@ def test_fullscreen_overlay_blanks_the_shell_and_sinks_below_files(session, shel
 
 
 # ------------------------------------------------------------------ 200 % scale
-def _apply_scale(s, scale: float) -> None:
-    """The user's real monitor: scale 2 with fractional scaling on
-    (scale-monitor-framebuffer). Only the session's own dconf and display config."""
-    assert s.run(["gsettings", "set", "org.gnome.mutter", "experimental-features",
-                  "['scale-monitor-framebuffer']"]).returncode == 0
-    dc = ["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.DisplayConfig",
-          "--object-path", "/org/gnome/Mutter/DisplayConfig", "--method"]
-
-    def state():
-        return s.run(dc + ["org.gnome.Mutter.DisplayConfig.GetCurrentState"]).stdout
-
-    assert _wait(lambda: "'layout-mode': <uint32 1>" in state(), 10), state()
-    serial = state().split(",", 1)[0].split()[-1]
-    w, h = s.size
-    r = s.run(dc + ["org.gnome.Mutter.DisplayConfig.ApplyMonitorsConfig", serial, "1",
-                    f"[(0, 0, {scale}, 0, true, [('Meta-0', '{w}x{h}@60.000', @a{{sv}} {{}})])]",
-                    "@a{sv} {}"])
-    assert r.returncode == 0, r.stderr
-
-
 @pytest.fixture(scope="module")
 def hidpi(built_dir):  # noqa: F811
     """A 3200x1800 virtual monitor at scale 2: 1600x900 logical, like 2880x1920 at 2."""
     require_session_tools()
-    with Session(size=(3200, 1800), extensions=[built_dir], helper=True) as s, \
+    with Session(size=(3200, 1800), extensions=[built_dir], helper=True, scale=2.0) as s, \
             ShellHelper(s) as helper:
         helper.wait_ready()
         assert _wait(lambda: _has_owner(s)), _state(s)
-        _apply_scale(s, 2.0)
         time.sleep(1.0)
         yield SimpleNamespace(session=s, shell=helper)
 
