@@ -19,13 +19,17 @@ Writes e2e_linux_out/ (or --out): results.json, results.md, log.txt, app_log.txt
 app's output, then its log.txt), shots/ and with --record a video. Exit code 1 when a
 scenario is not PASS or none ran.
 
-To add a scenario, append a `Scenario(...)` to SCENARIOS at the bottom: the same arguments
-as e2e_windows.run(), with `where="nautilus"` (or "desktop" for the D-* files on the DING
-desktop). Tool windows get a `tool` driver, called right after the drop."""
+Scenarios: a `Scenario(...)` takes the arguments of e2e_windows.run(), with
+`where="nautilus"` (or "desktop" for the D-* files on the DING desktop); tool windows get a
+`tool` driver, called right after the drop. The runner runs SCENARIOS at the bottom of this
+file, then the SCENARIOS list of every demo/e2e_linux_*.py module, sorted by file name
+(`from e2e_linux import Scenario, C, inject, ...` works there). A module that fails to import,
+has no SCENARIOS list or repeats a scenario name stops the run."""
 from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import re
@@ -41,6 +45,9 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+
+if __name__ == "__main__":   # scenario modules import `e2e_linux`: give them this module
+    sys.modules.setdefault("e2e_linux", sys.modules[__name__])
 
 from e2e_common import ROOT, SOURCES, img_ok, make_files, new_files, ring_index, safe, snapshot, v_format
 
@@ -489,6 +496,40 @@ SCENARIOS: list[Scenario] = [
 ]
 
 
+DEMO = Path(__file__).resolve().parent
+
+
+class ScenarioModuleError(RuntimeError):
+    """A demo/e2e_linux_*.py module that can't be used: the run stops."""
+
+
+def collect(demo: Path = DEMO) -> list[tuple[str, list[Scenario]]]:
+    """(file name, scenarios) for this file, then every e2e_linux_*.py in `demo` sorted by
+    name, imported only now."""
+    groups = [("e2e_linux.py", list(SCENARIOS))]
+    for path in sorted(demo.glob("e2e_linux_*.py")):
+        try:
+            spec = importlib.util.spec_from_file_location(path.stem, path)
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[path.stem] = mod
+            spec.loader.exec_module(mod)
+        except Exception as e:
+            sys.modules.pop(path.stem, None)
+            raise ScenarioModuleError(f"{path.name} failed to import:\n"
+                                      + "".join(traceback.format_exception(e))) from e
+        found = getattr(mod, "SCENARIOS", None)
+        if not isinstance(found, list) or not all(isinstance(x, Scenario) for x in found):
+            raise ScenarioModuleError(f"{path.name} has no SCENARIOS list of Scenario")
+        groups.append((path.name, found))
+    seen: dict[str, str] = {}
+    for file, scenarios in groups:
+        for x in scenarios:
+            if x.name in seen:
+                raise ScenarioModuleError(f"scenario {x.name!r} is in {seen[x.name]} and {file}")
+            seen[x.name] = file
+    return groups
+
+
 # ------------------------------------------------------------------ main
 def write_results():
     passed = sum(r["status"] == "PASS" for r in RESULTS)
@@ -516,11 +557,19 @@ def main(argv=None) -> int:
                     help="record the session (periodic screenshots → mp4 or webp)")
     a = ap.parse_args(argv)
     signal.signal(signal.SIGTERM, lambda signum, _f: sys.exit(128 + signum))   # still clean up
+    try:
+        groups = collect()
+    except ScenarioModuleError as e:
+        print(f"scenario modules: {e}", file=sys.stderr)
+        return 1
+    every = [x for _, scenarios in groups for x in scenarios]
     if a.list:
-        print("\n".join(s.name for s in SCENARIOS))
+        for file, scenarios in groups:
+            print(file)
+            print("".join(f"  {x.name}\n" for x in scenarios), end="")
         return 0
-    todo = [s for s in SCENARIOS if not a.only or s.name in a.only]
-    unknown = set(a.only) - {s.name for s in SCENARIOS}
+    todo = [s for s in every if not a.only or s.name in a.only]
+    unknown = set(a.only) - {s.name for s in every}
     if unknown:
         print(f"unknown scenario(s): {sorted(unknown)}; --list shows them", file=sys.stderr)
         return 2

@@ -663,9 +663,26 @@ uv run pytest tests/linux/test_e2e_smoke.py           # the runner with --only "
 - `--record` takes a screenshot every 0.5 s, with a dot for the pointer (the helper's
   screenshots leave the cursor out). GNOME's own screencast isn't available in the
   isolated session.
-- To add a scenario, append a `Scenario(...)` to `SCENARIOS` at the end of the file. It
-  takes the arguments of `e2e_windows.run()`, with `where="nautilus"` or `"desktop"`.
-  `tool` drives a tool window after the drop.
+- Scenarios come from `SCENARIOS` at the end of `e2e_linux.py` (`JPG → PNG`), then from the
+  `SCENARIOS` list of every `demo/e2e_linux_*.py` module, sorted by file name and imported
+  only when the runner starts. Add a new module for a new group of scenarios, so parallel
+  branches don't edit the same list:
+
+  ```python
+  # demo/e2e_linux_conversions.py
+  from e2e_common import v_format
+  from e2e_linux import Scenario
+
+  SCENARIOS = [
+      Scenario("JPG → WEBP", "nautilus", ["Photo.jpg"], "Convert", "WEBP", v_format("WEBP", ".webp")),
+  ]
+  ```
+
+  A `Scenario` takes the arguments of `e2e_windows.run()`, with `where="nautilus"` or
+  `"desktop"`. `tool` drives a tool window after the drop, and `C`, `inject` and the other
+  helpers of `e2e_linux` can be imported from it. A module that fails to import, has no
+  `SCENARIOS` list or repeats a scenario name stops the run with exit code 1. `--list`
+  prints the scenarios grouped by file.
 - The sample files, `new_files` and the `v_*` verifiers live in `demo/e2e_common.py`, which
   the Windows and macOS runners import too.
 - In the Docker image the repo is read-only, so pass `--out` on a writable mount:
