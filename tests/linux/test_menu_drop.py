@@ -239,11 +239,13 @@ def _shot(session, shell, tag: str | None, step: str) -> None:
 
 
 def _shift_drag(session, shell, app, src: Source, drag: str, *, select=(), flip=None,
-                to=None, tag=None) -> tuple[str, tuple]:
+                to=None, tag=None, peek=False) -> tuple[str, tuple]:
     """A real Shift+drag of `drag` (after selecting `select`) into the menu; then an
     optional ring flip ("shift": a Shift tap, "hub": visit a petal, then rest on the hub)
     and the drop at `to`: (ring, label) for a petal, "corner", "hub", or (n, i) for where
-    petal i of n would be. Returns the app's log of the gesture and the menu's frame."""
+    petal i of n would be. peek: first move the file to a corner of the menu, where the
+    drag icon leaves the hub's text visible, for a screenshot. Returns the app's log of
+    the gesture and the menu's frame."""
     mark = len(app["text"]())
     log = lambda: app["text"]()[mark:]         # noqa: E731
     try:
@@ -258,6 +260,10 @@ def _shift_drag(session, shell, app, src: Source, drag: str, *, select=(), flip=
         time.sleep(0.2)
         assert _menus(shell, app), "the menu closed before the drop"
         _shot(session, shell, tag, "entered")
+        if peek:
+            inject.glide(shell, frame[0] + CORNER, frame[1] + CORNER, dur=0.3)
+            time.sleep(0.3)
+            _shot(session, shell, tag, "hub")
         rings = _rings(src.paths if not select else [src.folder / n for n in select])
         names = [k for k, v in rings.items() if v]
         if flip == "shift":
@@ -352,7 +358,7 @@ def test_two_files_onto_pdf_make_one_pdf(session, shell, app, files, where):
         pdf = [it for it in _rings(src.paths)["Convert"] if it.label == "PDF"][0]
         assert pdf.hint == "2 images → 1 PDF"
         log, _ = _shift_drag(session, shell, app, src, names[1], select=names,
-                             to=("Convert", "PDF"), tag=f"two-{where}")
+                             to=("Convert", "PDF"), tag=f"two-{where}", peek=True)
         assert "menu: 2 file(s), hub '2 files'" in log, log
         _assert_dropped(log, 2, "PDF", "Convert")
         outs = src.new_files()
