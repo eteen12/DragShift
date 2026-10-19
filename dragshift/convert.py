@@ -320,9 +320,69 @@ def html_to_pdf(body_html: str, out: Path) -> None:
     writer.close()
 
 
+SOFFICE_TIMEOUT = 120  # s; a snap's first run alone can take 20+ s
+
+
+def _soffice_to_pdf(src: Path, out: Path) -> bool:
+    """Linux: export with LibreOffice headless (deb, snap or flatpak) if installed. Uses a
+    throwaway profile, so a running LibreOffice and the user's own profile are never
+    involved. False (with one log line) on any failure; the caller falls back."""
+    import os
+    import shutil
+    import subprocess
+    import uuid
+    from . import platform_linux
+    cmd = platform_linux.soffice_binary()
+    if not cmd:
+        print("docx->pdf: LibreOffice not found, using the built-in renderer", flush=True)
+        return False
+    work = platform_linux.soffice_workroot(cmd) / uuid.uuid4().hex
+    reason = None
+    try:
+        indir, outdir, profile = work / "in", work / "out", work / "profile"
+        for d in (indir, outdir, profile):
+            d.mkdir(parents=True)
+        copy = indir / src.name  # the snap can't read every folder the source may be in
+        shutil.copyfile(src, copy)
+        args = [*cmd, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", str(outdir),
+                f"-env:UserInstallation={profile.as_uri()}", str(copy)]
+        proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, start_new_session=True)
+        log = b""
+        try:
+            log, _ = proc.communicate(timeout=SOFFICE_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            reason = f"timed out after {SOFFICE_TIMEOUT} s"
+        finally:
+            # the whole group: soffice forks soffice.bin, which must not outlive us
+            platform_linux.kill_process_group(proc.pid)
+            if reason:
+                proc.stdout.close()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
+        result = outdir / (copy.stem + ".pdf")
+        if reason is None:
+            if result.is_file() and result.stat().st_size > 0:
+                # copy, not rename: the work dir can be on another file system than `out`
+                atomic_save(lambda dst: shutil.copyfile(result, dst), out)
+                return True
+            msg = log.decode(errors="replace").strip().splitlines()
+            reason = f"exit {proc.returncode}, no PDF" + (f": {msg[-1][:200]}" if msg else "")
+    except Exception as e:
+        reason = f"{type(e).__name__}: {e}"
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    print(f"docx->pdf: LibreOffice failed ({reason}), using the built-in renderer", flush=True)
+    return False
+
+
 def docx_to_pdf(src: str | Path) -> list[Path]:
     src = Path(src)
     out = sibling(src, ext=".pdf")
+    if sys.platform.startswith("linux") and _soffice_to_pdf(src, out):
+        return [out]
     if not _word_to_pdf(src, out):
         html_to_pdf(docx_to_html(src), out)
     return [out]
