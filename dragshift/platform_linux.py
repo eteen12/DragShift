@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 # Clutter.ModifierType bits, as the shell extension reports them in `modifier_mask`
@@ -76,16 +77,54 @@ def extension_version() -> str | None:
 
 
 # ---------------------------------------------------------------- input state
-def pointer_state() -> tuple[int, int, bool, int] | None:
-    """Global pointer `(x, y, left_down, modifier_mask)` in logical screen pixels, or None
-    when unknown (extension missing). Never derived from QCursor.pos(): under XWayland it
-    is stale while the pointer is over Wayland windows."""
+# After a failed call the client stays off the bus for a while (0.5 s, doubling up to 5 s;
+# reset by the next success), so a stopped or hung extension costs one call per back-off
+# step instead of one per 15 ms trigger tick.
+BACKOFF_FIRST, BACKOFF_MAX = 0.5, 5.0
+
+_answered = False    # the last GetPointer call succeeded
+_retry_at = 0.0      # time.monotonic() before which a failed client doesn't call again
+_backoff = 0.0
+
+
+def _get_pointer() -> tuple | None:
+    """One GetPointer call with the back-off bookkeeping: the reply body, or None (at once,
+    without touching the bus, while backing off)."""
+    global _answered, _retry_at, _backoff
+    if not _answered and time.monotonic() < _retry_at:
+        return None
+    body = _call("GetPointer")
+    if body is not None and len(body) == 3:
+        _answered, _backoff = True, 0.0
+        return body
+    _backoff = min(BACKOFF_MAX, _backoff * 2 or BACKOFF_FIRST)
+    _answered, _retry_at = False, time.monotonic() + _backoff
     return None
 
 
+def pointer_state() -> tuple[int, int, bool, int] | None:
+    """Global pointer `(x, y, left_down, modifier_mask)` from the shell extension, or None
+    when unknown (extension missing, stopped or not answering within DBUS_TIMEOUT; then
+    None until the back-off allows the next try). Never raises.
+
+    x, y are global logical pixels across all monitors (at scale 1 equal to X/Qt pixels).
+    modifier_mask is Clutter.ModifierType as is: compare it with KEY_MASKS / BUTTON1_MASK
+    and ignore other bits (Num Lock, Super, ...). Never derived from QCursor.pos(): under
+    XWayland it is stale while the pointer is over Wayland windows."""
+    body = _get_pointer()
+    if body is None:
+        return None
+    x, y, mask = body
+    return x, y, bool(mask & BUTTON1_MASK), mask
+
+
 def extension_available() -> bool:
-    """True when DragShift's GNOME Shell extension answers on the session bus."""
-    return False
+    """True when DragShift's GNOME Shell extension answered the last call. While it hasn't,
+    this tries again (one GetPointer call) whenever the back-off allows, so calling it from
+    a slow timer notices an extension that is installed or enabled later."""
+    if not _answered:
+        _get_pointer()
+    return _answered
 
 
 # ---------------------------------------------------------------- screen capture

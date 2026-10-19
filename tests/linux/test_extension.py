@@ -101,6 +101,9 @@ def test_dbus_xml_matches_python_client():
     assert iface.get("name") == lx.INTERFACE
     version = iface.find("method[@name='Version']")
     assert [(a.get("type"), a.get("direction")) for a in version.findall("arg")] == [("s", "out")]
+    pointer = iface.find("method[@name='GetPointer']")
+    assert [(a.get("name"), a.get("type"), a.get("direction")) for a in pointer.findall("arg")] \
+        == [("x", "i", "out"), ("y", "i", "out"), ("mask", "u", "out")]
     js = (SRC / "extension.js").read_text()
     assert f"BUS_NAME = '{lx.BUS_NAME}'" in js
     assert f"OBJECT_PATH = '{lx.OBJECT_PATH}'" in js
@@ -254,6 +257,7 @@ def test_extension_is_active_and_answers_version(ext_session):
     r = s.run(["gdbus", "introspect", "--session", "--dest", lx.BUS_NAME,
                "--object-path", lx.OBJECT_PATH])
     assert f"interface {lx.INTERFACE} {{" in r.stdout and "Version(out s version);" in r.stdout
+    assert "GetPointer(out i x,\n" in r.stdout and "out u mask);" in r.stdout
 
 
 @gnome
