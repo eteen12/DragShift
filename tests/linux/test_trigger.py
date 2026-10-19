@@ -5,7 +5,7 @@ Files and from the desktop, injected through the test-helper extension.
 - The app starts while the extension is disabled and picks it up once it is enabled,
   without a restart (the watcher's probe timer).
 - Shift pressed after moving, and Shift held before the button, open the menu within
-  OPEN_WITHIN of the trigger; a Shift tap over the menu flips it to the Tools ring
+  OPEN_WITHIN of the trigger (Shift, or the LINUX_DRAG_THRESHOLD move); a Shift tap over the menu flips it to the Tools ring
   (logged as `ring: Tools`), and a drop beside the petals closes it.
 - A drag without Shift, and a Shift+drag with "Enabled" off in the tray, open nothing.
 - Every drag leaves the source file as it was.
@@ -28,7 +28,7 @@ from PIL import Image
 
 from dragshift.app import LINUX_APP_ID
 from dragshift.radial import MENU_TITLE, SIZE
-from dragshift.trigger import DRAG_THRESHOLD
+from dragshift.trigger import LINUX_DRAG_THRESHOLD
 from tests.linux import inject
 from tests.linux.conftest import require_session_tools
 from tests.linux.files import Files
@@ -40,7 +40,7 @@ from tests.linux.test_startup import TRAY_CLICK
 
 pytestmark = pytest.mark.gnome
 
-OPEN_WITHIN = 0.3          # s from the trigger (Shift, or the 10 px move) to the menu window
+OPEN_WITHIN = 0.3          # s from the trigger (Shift, or the 20 px move) to the menu window
 FOLLOWING = "trigger: following the extension's pointer state"
 CORNER = 40                # px into the menu window: inside it, outside every petal
 SHIFT_MASK = 1 << 0
@@ -149,9 +149,10 @@ def _menus(shell, app) -> list[dict]:
 
 
 def _press_and_move(shell, start, toward, shift_first: bool) -> float:
-    """Button down on the icon and move the file 12 px (past DragShift's 10 px and the
-    toolkit's drag threshold). Shift goes down before the button (shift_first), or after
-    60 px more. Returns when the trigger condition became true."""
+    """Button down on the icon and move the file 2 px a step, slowly over the first 12 px
+    (where the toolkit starts its drag), like a hand. Shift goes down before the button
+    (shift_first; then the move stops a few steps past the watcher's threshold) or after
+    72 px. Returns when the trigger condition became true."""
     x0, y0 = inject.glide(shell, *start, dur=0.25)
     if shift_first:
         shell.key(inject.KEYSYMS["Shift_L"], True)
@@ -159,15 +160,15 @@ def _press_and_move(shell, start, toward, shift_first: bool) -> float:
     shell.button(1, True)
     time.sleep(0.15)
     dx, dy = toward
-    crossed = None
-    for k in range(1, 7):
-        x, y = shell.move_pointer(x0 + dx * 12 * k / 6, y0 + dy * 12 * k / 6)
-        if crossed is None and abs(x - x0) + abs(y - y0) >= DRAG_THRESHOLD:
+    crossed, k = None, 0
+    while k < 36 and not (shift_first and crossed and time.monotonic() - crossed > 0.03):
+        k += 1
+        x, y = shell.move_pointer(x0 + dx * 2 * k, y0 + dy * 2 * k)
+        if crossed is None and abs(x - x0) + abs(y - y0) >= LINUX_DRAG_THRESHOLD:
             crossed = time.monotonic()
-        time.sleep(0.02)
+        time.sleep(0.02 if k <= 6 else 0.008)
     if shift_first:
         return crossed
-    inject.glide(shell, x0 + dx * 72, y0 + dy * 72, dur=0.25)
     t = time.monotonic()
     shell.key(inject.KEYSYMS["Shift_L"], True)
     return t
@@ -218,10 +219,9 @@ def _tray(session, label: str) -> None:
     time.sleep(0.5)
 
 
-def _open_flip_and_drop(session, shell, app, source, shift_first=False, tag=None, flip=True):
+def _open_flip_and_drop(session, shell, app, source, shift_first=False, tag=None):
     """A real Shift+drag that opens the menu; then into the menu, a Shift tap (Tools ring)
-    and a drop beside the petals (ignored: the menu closes, nothing runs). flip=False
-    stops after the menu opened: Escape, release, and the menu closes."""
+    and a drop beside the petals (ignored: the menu closes, nothing runs)."""
     where, path, start, toward = source
     mark = len(app["text"]())
     try:
@@ -245,10 +245,6 @@ def _open_flip_and_drop(session, shell, app, source, shift_first=False, tag=None
         if tag:
             _evidence(shell.screenshot(session.root / "tmp" / f"{tag}-shown.png"),
                       f"{tag}-shown.png")
-        if not flip:
-            _cancel(shell)
-            assert _wait(lambda: not _menus(shell, app), 2), "the menu stayed open"
-            return
         # into the menu quickly: one that sees no file within NO_DRAG_TIMEOUT ticks of the
         # pointer moving closes itself (a window move, not a file drag)
         inject.glide(shell, x + CORNER, y + CORNER, dur=0.15)
@@ -290,12 +286,11 @@ def test_shift_after_moving_opens_the_menu(session, shell, app, source):
 
 @pytest.mark.parametrize("source", ["nautilus", "desktop"], indirect=True)
 def test_shift_before_the_button_opens_the_menu(session, shell, app, source):
-    # From the desktop only the opening is checked. With Shift held at the press, DING
-    # sometimes starts no drag at all when the menu maps right at its drag threshold
-    # (about 1 run in 5 of this file, never when the test runs alone), so no file would
-    # enter the menu. The trigger itself opened the menu every time.
+    # From the desktop this needs trigger.LINUX_DRAG_THRESHOLD: with a 10 px threshold the
+    # menu mapped before DING had started its drag (Shift held at the press), and in 4 of
+    # 5 runs of this file no file ever entered the menu.
     _open_flip_and_drop(session, shell, app, source, shift_first=True,
-                        tag=f"shift-first-{source[0]}", flip=source[0] == "nautilus")
+                        tag=f"shift-first-{source[0]}")
 
 
 @pytest.mark.parametrize("source", ["nautilus"], indirect=True)

@@ -96,8 +96,18 @@ def test_shift_after_moving_opens_at_the_pointer(watcher):
 def test_shift_before_the_button_opens(watcher):
     ev = watcher.run((100, 100, False, SHIFT),                    # Shift held, then press
                      (100, 100, True, SHIFT), (105, 100, True, SHIFT),
-                     (112, 100, True, SHIFT))                     # 12 px: past the threshold
-    assert ev == [("show", 112, 100)]
+                     (120, 100, True, SHIFT))                     # 20 px: past the threshold
+    assert ev == [("show", 120, 100)]
+
+
+def test_linux_waits_for_a_longer_move(watcher):
+    """20 px instead of Windows/macOS's 10, so the file manager has started its drag
+    before the menu maps (DING with Shift held at the press starts none otherwise)."""
+    from dragshift import trigger
+    assert trigger.LINUX_DRAG_THRESHOLD == 20 and trigger.DRAG_THRESHOLD == 10
+    assert watcher.run((100, 100, True, SHIFT), (112, 100, True, SHIFT),
+                       (110, 109, True, SHIFT)) == []             # 12 and 19 px
+    assert watcher.run((110, 110, True, SHIFT)) == [("show", 110, 110)]
 
 
 def test_drag_without_the_key_opens_nothing(watcher):
@@ -157,9 +167,9 @@ def test_release_hides_after_the_drop_delay(watcher):
 # ---------------------------------------------------------------- no pointer data
 def test_none_with_the_menu_closed_skips_the_tick(watcher):
     """A gap in the data keeps the press point: the threshold still counts from it."""
-    ev = watcher.run((100, 100, True, SHIFT), None, None, (106, 100, True, SHIFT))
-    assert ev == []                            # 6 px from the press, not from the gap
-    assert watcher.run((111, 100, True, SHIFT)) == [("show", 111, 100)]
+    ev = watcher.run((100, 100, True, SHIFT), None, None, (116, 100, True, SHIFT))
+    assert ev == []                            # 16 px from the press, not from the gap
+    assert watcher.run((121, 100, True, SHIFT)) == [("show", 121, 100)]
 
 
 def test_none_with_the_menu_open_counts_as_released(watcher):

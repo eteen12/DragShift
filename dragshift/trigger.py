@@ -16,6 +16,9 @@ from PySide6.QtGui import QCursor
 IS_LINUX = sys.platform.startswith("linux")
 VK_LBUTTON, VK_SHIFT, VK_ESCAPE = 0x01, 0x10, 0x1B
 DRAG_THRESHOLD = 10   # px the mouse must travel with the button held
+# Linux: further, so the file manager has started its drag before the menu maps. With Shift
+# held at the press, the desktop (DING) otherwise often starts no drag at all (#31).
+LINUX_DRAG_THRESHOLD = 20
 NO_DRAG_TIMEOUT = 50  # ticks (≈ 0.75 s) to wait for a file drag to enter before hiding
 # Linux: without the shell extension there is no input state at all, so the watcher idles
 # and asks for it every PROBE_MS; after LOST_AFTER s of no data it goes back to that.
@@ -122,7 +125,8 @@ class DragShiftWatcher(QObject):
                 if self._down_at is None:
                     self._down_at = pos
                     self._fired = False
-                moved = (pos - self._down_at).manhattanLength() >= DRAG_THRESHOLD
+                need = LINUX_DRAG_THRESHOLD if self._linux is not None else DRAG_THRESHOLD
+                moved = (pos - self._down_at).manhattanLength() >= need
                 if self.enabled and moved and shift and not self._fired:
                     self._fired = True
                     self._idle_ticks = 0
