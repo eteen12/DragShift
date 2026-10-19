@@ -12,6 +12,7 @@ if not sys.platform.startswith("linux"):
     collect_ignore_glob = ["*"]
 else:
     from tests.linux.session import Session, missing_tools
+    from tests.linux.shell import ShellHelper
 
 # The real desktop's display variables as seen before any session started.
 REAL_ENV = {k: os.environ.get(k) for k in
@@ -27,7 +28,17 @@ def require_session_tools():
 
 @pytest.fixture(scope="session")
 def gnome_session():
-    """One isolated GNOME Shell session shared by the whole test run."""
+    """One isolated GNOME Shell session shared by the whole test run, with the test-helper
+    extension installed (use the `shell_helper` fixture to call it)."""
     require_session_tools()
-    with Session() as s:
+    with Session(helper=True) as s:
         yield s
+
+
+@pytest.fixture(scope="session")
+def shell_helper(gnome_session):
+    """A ready ShellHelper for the shared session (screenshots, window list, pointer).
+    Fails with the shell log tail if the helper extension did not load."""
+    with ShellHelper(gnome_session) as helper:
+        helper.wait_ready()
+        yield helper

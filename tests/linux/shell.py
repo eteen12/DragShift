@@ -1,0 +1,203 @@
+"""Client for the test-helper extension `dragshift-test@eteen12.github.io` (Linux only).
+
+The extension (tests/linux/ext/) runs inside the isolated session from session.py and
+answers on `io.github.eteen12.DragShiftTest`. It is test-only: `Session(helper=True)`
+copies it into the session's temporary XDG_DATA_HOME; nothing installs it anywhere else.
+
+The project venv cannot import `gi`, so ShellHelper starts one bridge process per client:
+the system python3 that has python3-gi (`session.gi_python()`), run inside the session's
+environment, which makes the D-Bus calls with Gio and exchanges JSON lines with us. A call
+costs about a millisecond instead of a process start.
+
+Usage::
+
+    with Session(helper=True) as s, ShellHelper(s) as shell:
+        shell.wait_ready()
+        png = shell.screenshot()                       # Path under the session root
+        win = shell.wait_for_window(wm_class="org.gnome.Nautilus")
+        shell.activate_window(win["id"])
+
+This file is also the bridge (`python3 -I shell.py --bridge`), so the module level must
+only use the standard library.
+"""
+from __future__ import annotations
+
+import itertools
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+UUID = "dragshift-test@eteen12.github.io"
+EXTENSION_DIR = Path(__file__).resolve().with_name("ext") / UUID
+BUS_NAME = "io.github.eteen12.DragShiftTest"
+OBJECT_PATH = "/io/github/eteen12/DragShiftTest"
+INTERFACE = "io.github.eteen12.DragShiftTest"
+
+# D-Bus input signature of every method the client calls.
+SIGNATURES = {
+    "Version": "",
+    "Screenshot": "(s)",
+    "ScreenshotArea": "(iiiis)",
+    "ListWindows": "",
+    "ActivateWindow": "(t)",
+    "GetPointer": "",
+}
+
+
+class HelperError(RuntimeError):
+    """A helper call failed (D-Bus error, bridge died, or the extension never answered)."""
+
+
+class ShellHelper:
+    """Calls the test-helper extension in a running `Session`."""
+
+    def __init__(self, session, timeout: float = 10.0):
+        from tests.linux.session import gi_python
+
+        self.session = session
+        self.timeout = timeout
+        self._shots = itertools.count(1)
+        self._bridge = session.popen(
+            [gi_python(), "-I", str(Path(__file__).resolve()), "--bridge"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, bufsize=1)
+
+    def __enter__(self) -> "ShellHelper":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self._bridge.poll() is None:
+            self._bridge.stdin.close()
+            try:
+                self._bridge.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._bridge.kill()
+                self._bridge.wait()
+        for f in (self._bridge.stdout, self._bridge.stderr):
+            f.close()
+
+    # ------------------------------------------------------------------ raw call
+    def call(self, method: str, *args, timeout: float | None = None) -> list:
+        """Call a helper method; returns its out arguments as a list."""
+        request = {"method": method, "signature": SIGNATURES[method], "args": list(args),
+                   "timeout_ms": int((timeout or self.timeout) * 1000)}
+        try:
+            self._bridge.stdin.write(json.dumps(request) + "\n")
+            self._bridge.stdin.flush()
+            line = self._bridge.stdout.readline()
+        except (BrokenPipeError, ValueError):
+            line = ""
+        if not line:
+            self._bridge.wait(timeout=5)
+            raise HelperError(f"D-Bus bridge exited ({self._bridge.returncode}): "
+                              f"{self._bridge.stderr.read().strip()}")
+        reply = json.loads(line)
+        if "error" in reply:
+            raise HelperError(f"{method}: {reply['error']}")
+        return reply["result"]
+
+    # ------------------------------------------------------------------ methods
+    def version(self) -> str:
+        return self.call("Version")[0]
+
+    def wait_ready(self, timeout: float = 15.0) -> str:
+        """Wait until the extension answers Version. On failure the error carries the
+        extension's state and the shell log tail (a syntax error shows up there)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                return self.call("Version", timeout=1)[0]
+            except HelperError as e:
+                last = e
+            info = self.session.run(["gnome-extensions", "info", UUID]).stdout.strip()
+            if "State: ERROR" in info or time.monotonic() > deadline:
+                break
+            time.sleep(0.2)
+        try:  # the extension's own errors may already have scrolled out of the tail
+            log = self.session.log_path.read_text(errors="replace").splitlines()
+        except OSError:
+            log = []
+        mine = "\n".join([ln for ln in log if UUID in ln and "requested by" not in ln][-20:])
+        raise HelperError(
+            f"test helper not ready after {timeout:.0f} s: {last}\n"
+            f"--- gnome-extensions info ---\n{info or '(not installed)'}\n"
+            f"--- gnome-shell log lines naming {UUID} ---\n{mine or '(none)'}\n"
+            f"--- gnome-shell log tail ---\n{self.session.log_tail()}")
+
+    def _shot_path(self, path) -> Path:
+        if path is None:
+            path = self.session.root / "tmp" / f"screenshot-{next(self._shots)}.png"
+        return Path(path)
+
+    def screenshot(self, path=None) -> Path:
+        """PNG of the whole stage without the cursor. `path` must lie inside the session
+        root (default: <root>/tmp/screenshot-N.png)."""
+        path = self._shot_path(path)
+        self.call("Screenshot", str(path))
+        return path
+
+    def screenshot_area(self, x: int, y: int, width: int, height: int, path=None) -> Path:
+        path = self._shot_path(path)
+        self.call("ScreenshotArea", x, y, width, height, str(path))
+        return path
+
+    def list_windows(self) -> list[dict]:
+        """Windows bottom to top. Keys: id, title, wm_class, pid, xid (0 unless X11),
+        client ('x11'|'wayland'), frame (x, y, w, h), above, focused, minimized,
+        stacking, window_type ('normal', 'desktop', ...)."""
+        windows = self.call("ListWindows")[0]
+        for w in windows:
+            w["frame"] = tuple(w["frame"])
+        return windows
+
+    def wait_for_window(self, timeout: float = 15.0, **match) -> dict:
+        """The topmost window whose fields equal every keyword (e.g. wm_class=...)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            windows = self.list_windows()
+            found = [w for w in windows if all(w.get(k) == v for k, v in match.items())]
+            if found:
+                return found[-1]
+            if time.monotonic() > deadline:
+                raise HelperError(f"no window matching {match} after {timeout:.0f} s; "
+                                  f"windows: {[(w['wm_class'], w['title']) for w in windows]}")
+            time.sleep(0.1)
+
+    def activate_window(self, window_id: int) -> bool:
+        """Activate by ListWindows `id` or X11 window id; False if no such window."""
+        return self.call("ActivateWindow", window_id)[0]
+
+    def get_pointer(self) -> tuple[int, int, int]:
+        """(x, y, Clutter modifier mask) from global.get_pointer()."""
+        return tuple(self.call("GetPointer"))
+
+
+def _bridge() -> int:
+    """JSON-lines bridge to the helper over the session bus (system python with gi)."""
+    from gi.repository import Gio, GLib
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    for line in sys.stdin:
+        req = json.loads(line)
+        try:
+            params = (GLib.Variant(req["signature"], tuple(req["args"]))
+                      if req["signature"] else None)
+            reply = bus.call_sync(BUS_NAME, OBJECT_PATH, INTERFACE, req["method"], params,
+                                  None, Gio.DBusCallFlags.NONE, req["timeout_ms"], None)
+            out = {"result": list(reply.unpack())}
+        except GLib.Error as e:
+            out = {"error": e.message}
+        except (TypeError, ValueError, KeyError) as e:
+            out = {"error": f"bad request: {e}"}
+        sys.stdout.write(json.dumps(out) + "\n")
+        sys.stdout.flush()
+    return 0
+
+
+if __name__ == "__main__" and sys.argv[1:] == ["--bridge"]:
+    sys.exit(_bridge())

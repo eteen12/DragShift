@@ -54,6 +54,8 @@ SYSTEM_EXTENSIONS = Path("/usr/share/gnome-shell/extensions")
 # System extensions that must run from a private copy (see module docstring).
 PRIVATE_COPY_EXTENSIONS = ("ding@rastersoft.com",)
 UBUNTU_MODE = Path("/usr/share/gnome-shell/modes/ubuntu.json")
+# Test-only helper extension (screenshots, window list); see tests/linux/shell.py.
+HELPER_EXTENSION = Path(__file__).resolve().with_name("ext") / "dragshift-test@eteen12.github.io"
 
 _PASSTHROUGH = ("PATH", "LANG", "LANGUAGE", "TZ", "TERM", "USER", "LOGNAME", "SHELL",
                 "VIRTUAL_ENV", "PYTHONPATH")
@@ -215,14 +217,19 @@ class Session:
 
     extensions: paths of extension directories (named by UUID) to copy into the session
         and enable before boot.
+    helper: also install the test-helper extension (HELPER_EXTENSION) and wait until it
+        answers; talk to it with tests.linux.shell.ShellHelper.
     keep: leave the temporary directories in place on stop() (for debugging).
     """
 
     def __init__(self, size: tuple[int, int] = (1600, 900), extensions=(),
                  timeout: float = BOOT_TIMEOUT,
-                 shell_args=(), keep: bool = False):
+                 shell_args=(), keep: bool = False, helper: bool = False):
         self.size = size
         self.extensions = [Path(e) for e in extensions]
+        self.helper = helper
+        if helper and HELPER_EXTENSION not in self.extensions:
+            self.extensions.append(HELPER_EXTENSION)
         self.timeout = timeout
         self.shell_args = list(shell_args)
         self.keep = keep
@@ -291,6 +298,10 @@ class Session:
         try:
             self._prepare()
             self._boot()
+            if self.helper:  # the shell answers before user extensions are enabled
+                from tests.linux.shell import ShellHelper
+                with ShellHelper(self) as helper:
+                    helper.wait_ready()
         except BaseException:
             tail = self.log_tail()
             self.stop()
@@ -580,6 +591,8 @@ def main(argv=None) -> int:
     ap.add_argument("--size", default="1600x900", help="virtual monitor size (WxH)")
     ap.add_argument("--extension", action="append", default=[], metavar="DIR",
                     help="extension directory (named by UUID) to install and enable")
+    ap.add_argument("--helper", action="store_true",
+                    help="install the test-helper extension (screenshots, window list)")
     ap.add_argument("--keep", action="store_true", help="keep the temporary directories")
     ap.add_argument("cmd", nargs=argparse.REMAINDER, help="-- command to run")
     a = ap.parse_args(argv)
@@ -593,7 +606,7 @@ def main(argv=None) -> int:
     signal.signal(signal.SIGHUP, _terminate)
     t0 = time.monotonic()
     try:
-        with Session((w, h), extensions=a.extension, keep=a.keep) as s:
+        with Session((w, h), extensions=a.extension, keep=a.keep, helper=a.helper) as s:
             print(f"GNOME Shell {s.shell_version} up in {time.monotonic() - t0:.1f} s: "
                   f"WAYLAND_DISPLAY={s.wayland_display} DISPLAY={s.display} "
                   f"log={s.log_path}", file=sys.stderr, flush=True)
