@@ -31,3 +31,9 @@ os.environ["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + str(_XDG_ROOT / "no-sess
 
 def pytest_unconfigure(config):
     shutil.rmtree(_XDG_ROOT, ignore_errors=True)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "gnome: needs the isolated headless GNOME Shell session "
+                   "(tests/linux/session.py); skipped when gnome-shell is missing")

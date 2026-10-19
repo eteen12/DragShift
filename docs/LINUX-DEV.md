@@ -56,3 +56,31 @@ XDG_STATE_HOME=$(mktemp -d) QT_QPA_PLATFORM=offscreen .venv/bin/python -m dragsh
 It prints `SELFTEST OK` and exits 0. On Linux the app logs to `$XDG_STATE_HOME/DragShift/log.txt`
 (default `~/.local/state/DragShift/log.txt`); a log over 1 MB is moved to `log.old.txt` at start.
 The temporary `XDG_STATE_HOME` above keeps the self-test's log out of your real one.
+
+## Isolated GNOME Shell session (`-m gnome` tests)
+
+Tests marked `gnome` run inside a throwaway headless GNOME Shell 46 session started by
+`tests/linux/session.py`. It needs `gnome-shell`, `dbus` (`dbus-run-session`,
+`dbus-daemon`, `dbus-update-activation-environment`), `gdbus` and `python3-gi`, which a
+normal Ubuntu desktop already has. Without them, the `gnome` tests are skipped.
+
+```sh
+uv run pytest -m "not gnome"                # quick loop: unit tests only, no session
+uv run pytest -m gnome tests/linux          # session tests only
+uv run python -m tests.linux.session -- nautilus --new-window /tmp   # run a command inside
+uv run python -m tests.linux.session        # print the session env, Ctrl-C to stop
+```
+
+In tests, use the session-scoped `gnome_session` fixture. `gnome_session.env()` is the
+environment for child processes, `gnome_session.run(cmd)` and `gnome_session.popen(cmd)`
+run inside the session, and `gnome_session.log_path` is the shell's log.
+`Session(extensions=[dir])` installs and enables extra extensions.
+
+The session never touches your real desktop:
+- It uses its own HOME, XDG directories, `TMPDIR`, `XDG_RUNTIME_DIR` (`/tmp/dsr.*`),
+  session bus and an empty private system bus.
+- It runs a private copy of DING, because DING kills every other DING of the same user
+  when it starts.
+- Teardown kills every process that carries the session's runtime dir, then deletes the
+  temporary directories. This also happens on Ctrl-C. A session whose launcher was
+  SIGKILLed is cleaned up by the next start.
