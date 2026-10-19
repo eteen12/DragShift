@@ -59,6 +59,29 @@ def test_version(shell_helper):
 
 
 @gnome
+def test_readiness_is_event_driven(shell_helper):
+    """wait_ready watches the bus name and reads the extension state from the shell
+    instead of polling Version and spawning `gnome-extensions info` (#106)."""
+    t = time.monotonic()
+    assert shell_helper.wait_for_name(5)                 # already owned: returns at once
+    assert time.monotonic() - t < 1
+    assert shell_helper.extension_state() == 1           # ENABLED
+    assert shell_helper.wait_ready() == "1"
+    # The helper logs its steps, so a failed start shows where it stopped.
+    log = shell_helper.session.log_path.read_text(errors="replace")
+    assert f"{UUID}: owns io.github.eteen12.DragShiftTest" in log
+
+
+@gnome
+def test_waiting_for_a_missing_name_times_out(shell_helper):
+    t = time.monotonic()
+    req = {"op": "wait_name", "name": "io.github.eteen12.NoSuchName", "timeout_ms": 300}
+    assert shell_helper._request(req) == [""]
+    assert 0.25 < time.monotonic() - t < 3
+    assert shell_helper.version() == "1"                 # the bridge is still usable
+
+
+@gnome
 def test_screenshot_is_a_full_stage_png(gnome_session, shell_helper):
     path = shell_helper.screenshot()
     assert path.parent == gnome_session.root / "tmp"

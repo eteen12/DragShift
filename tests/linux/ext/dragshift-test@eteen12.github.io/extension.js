@@ -439,7 +439,13 @@ class Helper {
 }
 
 export default class DragShiftTestExtension extends Extension {
+    _trace(what) {
+        console.log(`${this.uuid}: ${what} (overview visible=${Main.overview.visible} ` +
+            `animating=${Main.overview.animationInProgress} startingUp=${Main.layoutManager._startingUp})`);
+    }
+
     enable() {
+        this._trace('enable');
         const refusal = inputRefusal();
         this._input = refusal ? null : new Input();
         if (refusal)
@@ -458,6 +464,7 @@ export default class DragShiftTestExtension extends Extension {
             this._startupId = Main.layoutManager.connect('startup-complete', () => {
                 Main.layoutManager.disconnect(this._startupId);
                 this._startupId = 0;
+                this._trace('startup-complete');
                 this._leaveOverview();
             });
         } else {
@@ -473,14 +480,18 @@ export default class DragShiftTestExtension extends Extension {
         this._hiddenId = Main.overview.connect('hidden', () => {
             Main.overview.disconnect(this._hiddenId);
             this._hiddenId = 0;
+            this._trace('overview hidden');
             this._ownName();
         });
+        this._trace('hiding the overview');
         Main.overview.hide();
     }
 
     _ownName() {
         this._ownerId = Gio.bus_own_name_on_connection(
-            Gio.DBus.session, BUS_NAME, Gio.BusNameOwnerFlags.NONE, null, null);
+            Gio.DBus.session, BUS_NAME, Gio.BusNameOwnerFlags.NONE,
+            () => this._trace(`owns ${BUS_NAME}`),
+            () => this._trace(`lost ${BUS_NAME}`));
     }
 
     disable() {
