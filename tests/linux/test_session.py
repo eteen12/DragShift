@@ -151,6 +151,8 @@ def test_parallel_session_and_teardown(gnome_session):
     assert real_ding <= _system_ding_pids(), "the real desktop's DING was restarted"
     _assert_gone(dirs, rt)
     assert not Path(f"/proc/{shell_pid}").exists()
+    for lock in Path("/tmp").glob(".X*-lock"):  # Xwayland lock/socket cleaned up too
+        assert lock.read_text().strip() != str(shell_pid), f"{lock} left behind"
 
 
 @gnome

@@ -237,6 +237,7 @@ class Session:
         self.system_bus_address: str | None = None
         self.shell_version: str | None = None
         self.shell_pid: int | None = None
+        self._shell_start: str | None = None
         self.log_path: Path | None = None
         self._procs: list[subprocess.Popen] = []
         self._log = None
@@ -304,6 +305,14 @@ class Session:
         """Kill everything the session started and remove its directories. Idempotent."""
         _LIVE.discard(self)
         rt = str(self.runtime_dir) if self.runtime_dir else None
+        # Shell first, while its bus is still up, so Mutter removes its X11 lock/socket.
+        if self.shell_pid and _pid_start(self.shell_pid) == self._shell_start:
+            _signal([self.shell_pid], signal.SIGTERM)
+            deadline = time.monotonic() + 3
+            while _pid_start(self.shell_pid) == self._shell_start and time.monotonic() < deadline:
+                for p in self._procs:
+                    p.poll()  # reap dbus-run-session if it exits with the shell
+                time.sleep(0.05)
         groups = [p.pid for p in self._procs if p.poll() is None]
         for pgid in groups:
             try:
@@ -338,6 +347,7 @@ class Session:
                 break
             time.sleep(0.2)
         self._procs.clear()
+        self._remove_x11_leftovers()
         if self._log:
             self._log.close()
             self._log = None
@@ -485,6 +495,7 @@ class Session:
         self.shell_version = self._wait(version, deadline - time.monotonic(),
                                         f"org.gnome.Shell did not answer within {self.timeout:.0f} s")
         self.shell_pid = self._find_shell_pid(shell.pid)
+        self._shell_start = _pid_start(self.shell_pid) if self.shell_pid else None
         self.display = self._wait(self._find_display, max(5.0, deadline - time.monotonic()),
                                   "Xwayland display not found", check_alive)
         auth = sorted(self.runtime_dir.glob(".mutter-Xwaylandauth.*"))
@@ -498,6 +509,21 @@ class Session:
         r = self.run(["dbus-update-activation-environment", *pairs])
         if r.returncode != 0:
             raise SessionError(f"dbus-update-activation-environment failed: {r.stderr.strip()}")
+
+    def _remove_x11_leftovers(self) -> None:
+        """Lock files and sockets that still name our (now dead) shell, if it could not
+        clean up itself."""
+        if not self.shell_pid or _pid_start(self.shell_pid) == self._shell_start:
+            return
+        for lock in Path("/tmp").glob(".X*-lock"):
+            try:
+                if int(lock.read_text().strip()) != self.shell_pid:
+                    continue
+                n = lock.name[2:-5]
+                lock.unlink()
+                Path(f"/tmp/.X11-unix/X{n}").unlink(missing_ok=True)
+            except (OSError, ValueError):
+                continue
 
     def _find_shell_pid(self, launcher_pid: int) -> int | None:
         """The gnome-shell process under dbus-run-session (the sh wrapper exec()s into it)."""
