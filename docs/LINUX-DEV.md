@@ -261,6 +261,36 @@ uv run pytest tests/test_linux_startup.py                 # unit tests, offscree
 uv run pytest -s tests/linux/test_startup.py              # real app in the session, scale 1, 2, 1.5
 ```
 
+## Tray (top-bar icon)
+
+The tray is Qt's `QSystemTrayIcon`. On Linux, Qt publishes it as a StatusNotifierItem with
+a `com.canonical.dbusmenu` menu. Ubuntu's AppIndicator extension
+(`ubuntu-appindicators@ubuntu.com`) shows it in the top bar (#46).
+
+- **Icon.** The item sends pixmaps and no icon name: the 16, 24, 32, 48 and 64 px
+  frames of `assets/dragshift.ico`. The top bar draws the smallest frame that is at
+  least 16 × the scale, so it draws the 16 px frame at 100 % and the 32 px frame at
+  200 %, both 1:1. Yaru's top bar is dark in both colour schemes, so the colour icon
+  works in light and dark mode. The 1024 px PNG would arrive as 22 and 64 px frames,
+  and the top bar would scale them down.
+- **Clicks (AppIndicator 58).** A click opens the menu after the double-click delay.
+  A double click sends `Activate`, which Qt reports as `Trigger`, and that opens the
+  file picker, like a click on Windows. A right click opens the menu. A middle click
+  sends `SecondaryActivate` (`MiddleClick`), which DragShift ignores.
+- **Tip the developer ♥** runs `xdg-open`. Qt's `openUrl` would ask "Open with…"
+  through the portal.
+- **Enabled** writes `tray: trigger enabled` or `tray: trigger disabled` to the log.
+- **No StatusNotifier host** (another desktop, or AppIndicator disabled): the app keeps
+  running and logs `tray: no StatusNotifierWatcher; …`. While no host is there,
+  opening DragShift again opens Settings instead of the "already running" toast, and
+  the start-up toast says so. Qt registers the item by itself when a host appears
+  later.
+
+```sh
+uv run pytest tests/test_linux_tray.py              # offscreen
+uv run pytest -s tests/linux/test_tray.py           # real app and top bar in the session
+```
+
 ## DOCX → PDF and LibreOffice
 
 On Linux, DOCX → PDF uses LibreOffice when it is installed (`soffice` or `libreoffice` on

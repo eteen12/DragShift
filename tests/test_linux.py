@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -257,6 +258,100 @@ def test_menu_capture_is_inpainted_under_the_cursor(qapp, lx, monkeypatch):
     menu, cur = _popup(radial, (300, 300))
     r, g, b = menu._raw_backdrop.getpixel(cur)[:3]
     assert r < 128 and b > 128, (r, g, b)
+
+
+@pytest.fixture
+def placing(qapp, lx, monkeypatch):
+    """The extension's side of popup(), recorded: capture rects, PlaceWindow calls (and
+    whether the menu was already visible then)."""
+    from dragshift import radial
+    rec = SimpleNamespace(captures=[], places=[], menu=None)
+
+    def capture(x, y, w, h, exclude_self=False):
+        rec.captures.append((x, y, w, h))
+        return Image.new("RGB", (w, h), (10, 120, 200))
+
+    def place_window(title, x, y):
+        rec.places.append((title, x, y, rec.menu.isVisible()))
+        return False
+
+    monkeypatch.setattr(lx, "capture", capture)
+    monkeypatch.setattr(lx, "place_window", place_window)
+    monkeypatch.setattr(lx, "work_area", lambda x, y: None)     # tests below set one
+    rec.menu = radial.RadialMenu(lambda p: {}, lambda p: "")
+    yield rec
+    from PySide6.QtCore import QThreadPool
+    gc.collect()
+    QThreadPool.globalInstance().waitForDone(10000)
+    rec.menu.hide()
+
+
+@linux_only
+def test_menu_is_placed_by_the_extension_before_it_shows(placing):
+    """#34: a native Wayland window can't place itself, so popup() asks the extension to
+    put the frame on the clamped top-left right before show(), by the menu's title, and
+    the glass backdrop is captured from that same rect."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QGuiApplication
+    from dragshift import glass, radial
+    g = QGuiApplication.primaryScreen().geometry()
+    far = (g.right() - radial.SIZE, g.bottom() - radial.SIZE)   # as clamped on Windows
+    cases = [((300, 300), (100, 100)),
+             ((g.right() - 10, g.bottom() - 10), far),          # corner: kept on the monitor
+             ((0, 0), (g.left(), g.top()))]                      # QPoint(0, 0) is a real place
+    for at, tl in cases:
+        placing.menu.popup(QPoint(*at))
+        assert placing.places[-1] == (radial.MENU_TITLE, *tl, False)   # before show()
+        assert placing.captures[-1] == (*tl, radial.SIZE, radial.SIZE)
+        assert glass.LAST_SOURCE == "capture"
+        assert placing.menu.isVisible() and placing.menu.windowTitle() == "DragShift menu"
+        placing.menu.hide()
+
+
+@linux_only
+def test_menu_is_kept_in_the_shells_work_area(placing, lx, monkeypatch):
+    """Mutter keeps windows out of the top bar and a fixed dock, so the menu is clamped to
+    the work area the extension reports for the pointer's monitor (#42), not just to the
+    monitor; then the frame and the captured backdrop agree."""
+    from PySide6.QtCore import QPoint
+    from dragshift import radial
+    asked = []
+    monkeypatch.setattr(lx, "work_area", lambda x, y: asked.append((x, y)) or (66, 32, 700, 560))
+    placing.menu.popup(QPoint(5, 5))
+    assert asked == [(5, 5)]
+    assert placing.places[-1] == (radial.MENU_TITLE, 66, 32, False)
+    assert placing.captures[-1] == (66, 32, radial.SIZE, radial.SIZE)
+    placing.menu.hide()
+    placing.menu.popup(QPoint(5000, 5000))
+    assert placing.places[-1][1:3] == (66 + 700 - radial.SIZE - 1, 32 + 560 - radial.SIZE - 1)
+    placing.menu.hide()
+    monkeypatch.setattr(lx, "work_area", lambda x, y: None)       # extension can't tell
+    placing.menu.popup(QPoint(5, 5))
+    assert placing.places[-1][1:3] == (0, 0)
+
+
+@linux_only
+def test_menu_without_a_position_opens_at_the_extensions_pointer(placing, lx, monkeypatch):
+    """QCursor.pos() is stale over other apps' Wayland windows: popup() with no position
+    takes the pointer from the extension, and QCursor only when there is none."""
+    from PySide6.QtCore import QPoint
+    from dragshift import radial
+
+    class Cursor:
+        at = QPoint(260, 270)
+
+        @staticmethod
+        def pos():
+            return QPoint(Cursor.at)
+
+    monkeypatch.setattr(radial, "QCursor", Cursor)
+    monkeypatch.setattr(lx, "pointer_state", lambda: (250, 260, True, 1))
+    placing.menu.popup()
+    assert placing.places[-1][1:3] == (50, 60)
+    placing.menu.hide()
+    monkeypatch.setattr(lx, "pointer_state", lambda: None)     # no extension
+    placing.menu.popup()
+    assert placing.places[-1][1:3] == (60, 70)
 
 
 # ---------------------------------------------------------------- toasts / settings
