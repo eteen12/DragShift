@@ -1,9 +1,17 @@
-"""Fixtures for tests that run inside the isolated headless GNOME Shell session."""
+"""Fixtures for tests that run inside the isolated headless GNOME Shell session.
+
+Everything under tests/linux/ is Linux-only (it reads /proc, uses os.getuid and GNOME
+Shell), so nothing here is collected on Windows or macOS.
+"""
 import os
+import sys
 
 import pytest
 
-from tests.linux.session import Session, missing_tools
+if not sys.platform.startswith("linux"):
+    collect_ignore_glob = ["*"]
+else:
+    from tests.linux.session import Session, missing_tools
 
 # The real desktop's display variables as seen before any session started.
 REAL_ENV = {k: os.environ.get(k) for k in
