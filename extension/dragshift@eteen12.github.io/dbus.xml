@@ -2,11 +2,16 @@
  "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
 <!-- Exported at /io/github/eteen12/DragShift under the well-known name
      io.github.eteen12.DragShift on the session bus. The Python client lives in
-     dragshift/platform_linux.py; keep the names there in sync. -->
+     dragshift/platform_linux.py; keep the names there in sync.
+     Every method except Version answers only the DragShift app (a same-user Python
+     process running `-m dragshift`, `.../dragshift/__main__.py` or the
+     ~/.local/bin/dragshift launcher; caller.js, #93). Anyone else gets
+     org.freedesktop.DBus.Error.AccessDenied. -->
 <node>
   <interface name="io.github.eteen12.DragShift">
     <!-- DragShift version this extension was built from (version-name in metadata.json,
-         written by extension/build.sh). The app warns when it differs from its own. -->
+         written by extension/build.sh). The app warns when it differs from its own.
+         Open to every caller, so the app and the installer can find the extension. -->
     <method name="Version">
       <arg name="version" type="s" direction="out"/>
     </method>

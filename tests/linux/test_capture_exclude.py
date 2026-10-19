@@ -85,8 +85,9 @@ def test_dbus_xml_declares_capture_area_excluding_caller():
     for name in ("CaptureArea", "CaptureAreaExcludingCaller"):
         m = iface.find(f"method[@name='{name}']")
         assert [(a.get("type"), a.get("direction")) for a in m.findall("arg")] == want, name
-    js = (SRC / "extension.js").read_text()
-    assert "CaptureAreaExcludingCallerAsync(" in js and "GetConnectionUnixProcessID" in js
+    assert "CaptureAreaExcludingCallerAsync(" in (SRC / "extension.js").read_text()
+    # the caller's pid comes from the bus daemon (caller.js, shared with #93's check)
+    assert "GetConnectionCredentials" in (SRC / "caller.js").read_text()
 
 
 # ------------------------------------------------------------------ in the session
