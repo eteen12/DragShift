@@ -9,10 +9,9 @@ touched:
   WAYLAND_DISPLAY, DBUS_SESSION_BUS_ADDRESS, XAUTHORITY and SESSION_MANAGER never leak in.
 - HOME, the XDG directories and TMPDIR are temporary, so apps in the session never see
   the real desktop's files or /tmp sockets.
-- The session gets its own (empty) system bus by default, so the shell cannot register a
+- The session always gets its own (empty) system bus, so the shell cannot register a
   geoclue agent, take logind inhibitors, set the lock hint of the real login session or
-  start system services. `XDG_SESSION_ID` points at a session that does not exist, for
-  the same reason when the real system bus is used.
+  start system services. `XDG_SESSION_ID` also points at a session that does not exist.
 - Ubuntu's desktop-icons extension (DING) kills every `gjs <its path>/app/ding.js` of the
   same user when it is enabled, which would kill the real desktop's icons. The session runs
   a private copy from its own XDG_DATA_HOME, so it only ever matches its own copy.
@@ -214,20 +213,15 @@ class Session:
 
     extensions: paths of extension directories (named by UUID) to copy into the session
         and enable before boot.
-    system_bus: "isolated" (default) gives the session an empty private system bus;
-        "host" lets it use the real one (still detached from the real login session).
     keep: leave the temporary directories in place on stop() (for debugging).
     """
 
     def __init__(self, size: tuple[int, int] = (1600, 900), extensions=(),
-                 timeout: float = BOOT_TIMEOUT, system_bus: str = "isolated",
+                 timeout: float = BOOT_TIMEOUT,
                  shell_args=(), keep: bool = False):
-        if system_bus not in ("isolated", "host"):
-            raise ValueError("system_bus must be 'isolated' or 'host'")
         self.size = size
         self.extensions = [Path(e) for e in extensions]
         self.timeout = timeout
-        self.system_bus = system_bus
         self.shell_args = list(shell_args)
         self.keep = keep
         self.root: Path | None = None
@@ -455,15 +449,15 @@ class Session:
     def _boot(self) -> None:
         self._log = open(self.log_path, "wb")
         env = dict(self._base)
-        if self.system_bus == "isolated":
-            sock = self.runtime_dir / "system_bus_socket"
-            conf = self.root / "system-bus.conf"
-            conf.write_text(_SYSTEM_BUS_CONFIG.format(socket=sock))
-            self._spawn(["dbus-daemon", f"--config-file={conf}", "--nofork"], env)
-            self.system_bus_address = f"unix:path={sock}"
-            self._wait(lambda: sock.exists(), 5, "private system bus did not start")
-            env["DBUS_SYSTEM_BUS_ADDRESS"] = self.system_bus_address
-            self._base["DBUS_SYSTEM_BUS_ADDRESS"] = self.system_bus_address
+        # Empty private system bus: no logind, GeoClue, PackageKit or rtkit of the host.
+        sock = self.runtime_dir / "system_bus_socket"
+        conf = self.root / "system-bus.conf"
+        conf.write_text(_SYSTEM_BUS_CONFIG.format(socket=sock))
+        self._spawn(["dbus-daemon", f"--config-file={conf}", "--nofork"], env)
+        self.system_bus_address = f"unix:path={sock}"
+        self._wait(lambda: sock.exists(), 5, "private system bus did not start")
+        env["DBUS_SYSTEM_BUS_ADDRESS"] = self.system_bus_address
+        self._base["DBUS_SYSTEM_BUS_ADDRESS"] = self.system_bus_address
 
         addr_file = self.root / "bus-address"
         # The bus daemon (and every service it activates) sees WAYLAND_DISPLAY from the
@@ -584,8 +578,6 @@ def main(argv=None) -> int:
     ap.add_argument("--size", default="1600x900", help="virtual monitor size (WxH)")
     ap.add_argument("--extension", action="append", default=[], metavar="DIR",
                     help="extension directory (named by UUID) to install and enable")
-    ap.add_argument("--host-system-bus", action="store_true",
-                    help="let the shell use the real system bus instead of a private one")
     ap.add_argument("--keep", action="store_true", help="keep the temporary directories")
     ap.add_argument("cmd", nargs=argparse.REMAINDER, help="-- command to run")
     a = ap.parse_args(argv)
@@ -599,8 +591,7 @@ def main(argv=None) -> int:
     signal.signal(signal.SIGHUP, _terminate)
     t0 = time.monotonic()
     try:
-        with Session((w, h), extensions=a.extension, keep=a.keep,
-                     system_bus="host" if a.host_system_bus else "isolated") as s:
+        with Session((w, h), extensions=a.extension, keep=a.keep) as s:
             print(f"GNOME Shell {s.shell_version} up in {time.monotonic() - t0:.1f} s: "
                   f"WAYLAND_DISPLAY={s.wayland_display} DISPLAY={s.display} "
                   f"log={s.log_path}", file=sys.stderr, flush=True)
