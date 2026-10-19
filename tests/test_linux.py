@@ -1,8 +1,9 @@
 """Linux platform module (dragshift/platform_linux.py) and the dispatch points that use it.
 
-The module only holds fallbacks so far; these tests pin the documented fallback values,
-that the dispatch helper never imports the module on other platforms, and that every
-dispatch point reaches the module on Linux (with fake bodies patched in)."""
+The module only holds fallbacks so far. These tests check behaviour through the app's
+public functions: what Linux does with the fallbacks, what it does once the module's bodies
+answer (fakes patched in), that nothing imports the module off Linux, and the trigger state
+machine on every platform."""
 import subprocess
 import sys
 from pathlib import Path
@@ -36,21 +37,19 @@ def test_import_needs_no_dbus_libraries():
     subprocess.run([sys.executable, "-c", code], cwd=root, check=True)
 
 
-def test_fallbacks(lx, tmp_path):
-    assert lx.pointer_state() is None
-    assert lx.extension_available() is False
-    assert lx.capture(0, 0, 10, 10) is None
-    assert lx.capture(0, 0, 10, 10, exclude_self=True) is None
-    assert lx.wallpaper_crop(0, 0, 10, 10) is None
-    assert lx.autostart_enabled() is False
-    assert lx.set_autostart(True) is None
-    assert lx.set_autostart(False) is None
-    assert lx.reveal(tmp_path / "x.png") is False
-
-
-def test_key_masks_are_clutter_modifiers(lx):
-    assert lx.KEY_MASKS == {"shift": 1, "ctrl": 4, "alt": 8}
-    assert lx.BUTTON1_MASK == 256
+@linux_only
+def test_fallbacks_keep_todays_linux_behaviour(qapp, monkeypatch, tmp_path):
+    import os
+    from dragshift import glass, settings, toasts
+    assert glass.exclude_from_capture(0) is False
+    assert glass.grab_screen(0, 0, 40, 30).size == (40, 30)          # Qt's grab, as before
+    assert settings.autostart_enabled() is False
+    settings.set_autostart(True)
+    assert not (Path(os.environ["XDG_CONFIG_HOME"]) / "autostart").exists()
+    spawned = []
+    monkeypatch.setattr(toasts.subprocess, "Popen", lambda cmd, *a, **k: spawned.append(cmd))
+    toasts.reveal(tmp_path / "out.png")
+    assert spawned == [["xdg-open", str(tmp_path)]]
 
 
 # ---------------------------------------------------------------- never imported elsewhere
@@ -84,54 +83,102 @@ def test_module_never_imported_off_linux(tmp_path):
 
 
 # ---------------------------------------------------------------- trigger
+class FakeCursor:
+    """Stands in for QCursor: the position the watcher reads, and how often it reads it."""
+    at = (0, 0)
+    reads = 0
+
+    @classmethod
+    def pos(cls):
+        from PySide6.QtCore import QPoint
+        cls.reads += 1
+        return QPoint(*cls.at)
+
+
 @pytest.fixture
 def watcher(qapp, monkeypatch):
     from dragshift import trigger
-
-    class NoCursor:  # QCursor.pos() is stale under XWayland: the Linux path must not use it
-        @staticmethod
-        def pos():
-            raise AssertionError("QCursor.pos() used on Linux")
-
-    monkeypatch.setattr(trigger, "QCursor", NoCursor)
-    w = trigger.DragShiftWatcher(lambda: False, lambda: False)
+    FakeCursor.at, FakeCursor.reads = (0, 0), 0
+    monkeypatch.setattr(trigger, "QCursor", FakeCursor)
+    menu = {"visible": False, "got_drag": False}
+    w = trigger.DragShiftWatcher(lambda: menu["visible"], lambda: menu["got_drag"])
+    w.menu = menu
+    w.events = []
+    w.show_menu.connect(lambda p: w.events.append(("show", p.x(), p.y())))
+    w.toggle_ring.connect(lambda: w.events.append(("toggle",)))
+    w.hide_menu.connect(lambda: w.events.append(("hide",)))
     yield w
     w.timer.stop()
 
 
+def test_tick_state_machine(watcher, monkeypatch):
+    """Every platform: press, move past the threshold with the key held, re-tap the key,
+    release. The state source is faked, so this runs on the Windows/macOS CI jobs too."""
+    from PySide6.QtTest import QTest
+    watcher._linux = None                      # read the position from QCursor everywhere
+    state = {"s": (False, False, False)}
+    monkeypatch.setattr(watcher, "_state", lambda: state["s"])
+
+    def tick(at, lbtn, key):
+        FakeCursor.at, state["s"] = at, (lbtn, key, False)
+        watcher._tick()
+
+    tick((100, 100), True, False)              # press
+    tick((105, 100), True, True)               # key down, but only 5 px moved
+    assert watcher.events == []
+    tick((115, 100), True, True)               # past the 10 px threshold: menu
+    tick((140, 100), True, True)               # still dragging: no second menu
+    assert watcher.events == [("show", 115, 100)]
+    watcher.menu.update(visible=True, got_drag=True)
+    tick((140, 100), True, False)              # key up
+    tick((140, 100), True, True)               # key tapped again: other ring
+    assert watcher.events[-1] == ("toggle",)
+    tick((140, 100), False, False)             # drop
+    QTest.qWait(200)                           # hide_menu is delayed 120 ms for the drop
+    assert watcher.events == [("show", 115, 100), ("toggle",), ("hide",)]
+
+
+def test_drag_without_key_opens_nothing(watcher, monkeypatch):
+    watcher._linux = None
+    state = {"s": (True, False, False)}
+    monkeypatch.setattr(watcher, "_state", lambda: state["s"])
+    for x in range(100, 200, 10):
+        FakeCursor.at = (x, 100)
+        watcher._tick()
+    assert watcher.events == []
+
+
 @linux_only
-def test_watcher_idle_without_pointer_data(watcher, lx):
-    assert watcher._linux is lx
+def test_watcher_idle_without_pointer_data(watcher):
     watcher.start()
-    assert not watcher.timer.isActive()
-    shown = []
-    watcher.show_menu.connect(shown.append)
-    watcher._tick()  # pointer_state() is None: nothing happens
-    assert shown == [] and watcher._down_at is None
+    assert not watcher.timer.isActive()        # no extension: no polling
+    watcher._tick()
+    assert watcher.events == [] and FakeCursor.reads == 0
 
 
 @linux_only
-def test_watcher_uses_pointer_state(watcher, lx, monkeypatch):
+def test_watcher_follows_pointer_state_not_qcursor(watcher, lx, monkeypatch):
     monkeypatch.setattr(lx, "extension_available", lambda: True)
     watcher.start()
     assert watcher.timer.isActive()
     watcher.timer.stop()
-    shown = []
-    watcher.show_menu.connect(shown.append)
+    FakeCursor.at = (900, 900)                 # stale XWayland cursor: must be ignored
     seq = iter([(100, 100, True, 0), (102, 100, True, lx.SHIFT_MASK), (130, 100, True, lx.SHIFT_MASK)])
     monkeypatch.setattr(lx, "pointer_state", lambda: next(seq))
     for _ in range(3):
         watcher._tick()
-    assert [(p.x(), p.y()) for p in shown] == [(130, 100)]
+    assert watcher.events == [("show", 130, 100)] and FakeCursor.reads == 0
 
 
 @linux_only
-def test_watcher_trigger_key_maps_to_mask(watcher, lx, monkeypatch):
+def test_watcher_trigger_key_maps_to_modifier(watcher, lx, monkeypatch):
     watcher.set_key("ctrl")
-    monkeypatch.setattr(lx, "pointer_state", lambda: (5, 5, True, lx.SHIFT_MASK))
-    assert watcher._state() == (True, False, False)
-    monkeypatch.setattr(lx, "pointer_state", lambda: (5, 5, False, lx.CONTROL_MASK | lx.SHIFT_MASK))
-    assert watcher._state() == (False, True, False)
+    seq = iter([(100, 100, True, lx.SHIFT_MASK), (130, 100, True, lx.SHIFT_MASK),
+                (150, 100, True, lx.CONTROL_MASK)])
+    monkeypatch.setattr(lx, "pointer_state", lambda: next(seq))
+    for _ in range(3):
+        watcher._tick()
+    assert watcher.events == [("show", 150, 100)]
 
 
 # ---------------------------------------------------------------- glass
@@ -211,25 +258,18 @@ def test_menu_capture_is_inpainted_under_the_cursor(qapp, lx, monkeypatch):
 
 # ---------------------------------------------------------------- toasts / settings
 @linux_only
-def test_reveal_dispatch(lx, monkeypatch, tmp_path):
+def test_reveal_uses_module_when_it_can(lx, monkeypatch, tmp_path):
     from dragshift import toasts
     spawned, asked = [], []
     monkeypatch.setattr(toasts.subprocess, "Popen", lambda cmd, *a, **k: spawned.append(cmd))
-    f = tmp_path / "out.png"
-    monkeypatch.setattr(lx, "reveal", lambda p: asked.append(p) or False)
-    toasts.reveal(f)
-    assert asked == [str(f)]
-    assert spawned == [["xdg-open", str(tmp_path)]]   # fallback when the module can't
-    spawned.clear()
-    monkeypatch.setattr(lx, "reveal", lambda p: True)
-    toasts.reveal(f)
-    assert spawned == []
+    monkeypatch.setattr(lx, "reveal", lambda p: asked.append(p) or True)
+    toasts.reveal(tmp_path / "out.png")
+    assert asked == [str(tmp_path / "out.png")] and spawned == []
 
 
 @linux_only
 def test_autostart_dispatch(lx, monkeypatch):
     from dragshift import settings
-    assert settings.autostart_enabled() is False
     seen = []
     monkeypatch.setattr(lx, "autostart_enabled", lambda: True)
     monkeypatch.setattr(lx, "set_autostart", seen.append)
