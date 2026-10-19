@@ -402,6 +402,46 @@ def mac_setup(qapp):
         pass
 
 
+# Linux app id: the Wayland app_id of every window, so GNOME matches them to
+# <LINUX_APP_ID>.desktop (dock icon and name, tray). Same reverse-DNS name as the D-Bus service.
+LINUX_APP_ID = "io.github.eteen12.DragShift"
+# Installed on a default Ubuntu 24.04 desktop: Ubuntu Sans, Ubuntu, Noto Sans, DejaVu Sans.
+LINUX_FONTS = ["Ubuntu Sans", "Ubuntu", "Cantarell", "Noto Sans", "DejaVu Sans"]
+
+
+def linux_qpa(env=None, argv=()) -> str | None:
+    """Linux: the Qt platform to ask for before QApplication exists, or None for Qt's default
+    (docs/linux/display-backend.md). A QT_QPA_PLATFORM or -platform the user gave always
+    wins; DRAGSHIFT_QPA picks one explicitly (tests); a Wayland session gets native Wayland
+    with Xwayland as Qt's fallback; an X11 session and anything else keep Qt's default."""
+    env = os.environ if env is None else env
+    if env.get("QT_QPA_PLATFORM") or "-platform" in argv:
+        return None
+    if env.get("DRAGSHIFT_QPA"):
+        return env["DRAGSHIFT_QPA"]
+    session = env.get("XDG_SESSION_TYPE", "")
+    if session != "x11" and (env.get("WAYLAND_DISPLAY") or session == "wayland"):
+        return "wayland;xcb"
+    return None
+
+
+def linux_setup(qapp):
+    """Linux, right after QApplication exists and before any window: Segoe UI → installed
+    fonts, the app id, and the platform, screens and font in the log. HiDPI needs nothing
+    more: under Wayland, PassThrough (main) gives each window the monitor's exact scale,
+    also a fractional one (1.25, 1.5…), so text and glass are drawn at device pixels."""
+    from PySide6.QtGui import QFont, QFontInfo
+    for fam in ("Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI"):
+        QFont.insertSubstitutions(fam, LINUX_FONTS)
+    qapp.setDesktopFileName(LINUX_APP_ID)
+    log_line(f"platform: {qapp.platformName()}")
+    for s in qapp.screens():  # Wayland: the output's integer scale; windows may use less
+        g = s.geometry()
+        log_line(f"screen {s.name()}: {g.width()}x{g.height()} at ({g.x()}, {g.y()}), "
+                 f"output scale {s.devicePixelRatio():g}")
+    log_line(f"font: Segoe UI → {QFontInfo(QFont('Segoe UI Variable Display')).family()}")
+
+
 def check_extension_version():
     """Linux: say when DragShift's GNOME Shell extension is missing or was built from another
     DragShift version. Asks on a daemon thread, so start-up never waits for the bus."""
@@ -446,6 +486,17 @@ def log_dir() -> Path:
     return Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".local" / "share") / "DragShift"
 
 
+_log_file = None   # log.txt once setup_logging() has opened it
+
+
+def log_line(text: str) -> None:
+    """One line into log.txt; to stderr when no log file is open."""
+    try:
+        print(text, file=_log_file or sys.stderr, flush=True)
+    except (OSError, ValueError):  # closed or unwritable: logging must never stop start-up
+        pass
+
+
 def setup_logging():
     """Errors go to log_dir()/log.txt (pythonw / the .exe have no console)."""
     import faulthandler
@@ -454,7 +505,8 @@ def setup_logging():
     path = base / "log.txt"
     if path.exists() and path.stat().st_size > 1_000_000:
         path.replace(base / "log.old.txt")
-    f = open(path, "a", encoding="utf-8", buffering=1)
+    global _log_file
+    f = _log_file = open(path, "a", encoding="utf-8", buffering=1)
     f.write(f"\n==== DragShift {VERSION} started {time.strftime('%Y-%m-%d %H:%M:%S')} ====\n")
     if sys.stderr is None or getattr(sys, "frozen", False) or sys.executable.lower().endswith("pythonw.exe"):
         sys.stdout = sys.stderr = f
@@ -479,9 +531,16 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             pass
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    qapp = DragShiftQApplication(argv)
+    qt_argv = argv
+    if IS_LINUX:
+        qpa = linux_qpa(os.environ, argv)
+        if qpa:  # an argument, not QT_QPA_PLATFORM, so child processes (xdg-open…) don't inherit it
+            qt_argv = [*argv, "-platform", qpa]
+    qapp = DragShiftQApplication(qt_argv)
     if IS_MAC:
         mac_setup(qapp)
+    if IS_LINUX:
+        linux_setup(qapp)
     qapp.setApplicationName(APP_NAME)
     qapp.setApplicationVersion(VERSION)
     qapp.setQuitOnLastWindowClosed(False)
