@@ -28,6 +28,7 @@ PROTECTED = {
     "WatchEscape": ("b", (False,)),
     "PlaceWindow": ("sii", ("no such window", 0, 0)),
     "GetWorkArea": ("ii", (0, 0)),
+    "GetOwnWindowFrame": ("s", ("no such window",)),
 }
 OPEN = {"Version": (None, ())}
 

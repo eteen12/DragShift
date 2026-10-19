@@ -517,3 +517,33 @@ both inside the session:
 ```sh
 uv run pytest tests/linux/test_capture_exclude.py -s   # own windows over Files; timings
 ```
+
+#### Glass windows and toasts: where they are, and live refresh (#40)
+
+Under Wayland a client is never told where its windows are: Qt's `frameGeometry()` is
+only what it asked for (`(0, 0)` for a window Mutter placed), so a backdrop captured there
+shows the wrong part of the screen.
+
+- **Toasts** are placed by the app (`PlaceWindow`), so `ToastCard.stage_rect()` is the
+  top-left it last asked for. The backdrop is captured before the card shows and again,
+  with DragShift's windows left out, after it slides into a new slot.
+- **Glass windows** (Settings, Welcome, the tools) are placed by Mutter and moved by the
+  user with a system move, which sends the app no event. `GlassWindow` asks the extension
+  where its frame is: `GetOwnWindowFrame(s title) -> (b mapped, iiii frame)` (client
+  `platform_linux.window_frame`). It looks only among the caller's own windows (by pid,
+  like `CaptureAreaExcludingCaller`), so glass window titles are unique per process
+  (`Crop Image (2) — DragShift`). The window polls it every 100 ms while shown (about
+  0.4 ms a call), backing off to 1.6 s while it is unknown. The first answer captures the
+  backdrop; a change, a resize or coming back to the window refreshes it 140 ms after it
+  settles. Each refresh is logged as `liquid: refreshed WxH at (x, y) from capture: ...`.
+- Without the extension both use the painted frost and nothing is polled or captured.
+
+A refresh runs `gc.collect()`, the capture (both on the GUI thread) and the render (a pool
+thread). On this machine: about 15 ms, 35 ms (scale 1) or 150 ms (scale 2), and 80 ms for
+an 820x680 window. `tests/linux/glass_app.py` runs the real `CropWindow` and `ToastStack`
+in one process inside the session and records every capture, so the test can compare each
+backdrop with the screen behind the window:
+
+```sh
+uv run pytest tests/test_window_glass.py tests/linux/test_window_glass.py -s   # scale 1 and 2; prints timings
+```

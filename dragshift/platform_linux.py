@@ -175,6 +175,19 @@ def work_area(x: int, y: int) -> tuple[int, int, int, int] | None:
     return tuple(body)
 
 
+# ---------------------------------------------------------------- own window frame (#40)
+def window_frame(title: str) -> tuple[int, int, int, int] | None:
+    """`(x, y, width, height)` of this process's window titled `title` on screen, in
+    global logical px, from the shell extension. A native Wayland client is never told
+    where its windows are (Qt's frameGeometry() is only what it asked for), and glass
+    windows capture what is behind them there. None while no such window is mapped, or
+    when the extension doesn't answer or is too old for GetOwnWindowFrame. Never raises."""
+    body = _call("GetOwnWindowFrame", "s", title)
+    if not body or len(body) != 5 or not body[0] or body[3] <= 0 or body[4] <= 0:
+        return None
+    return tuple(body[1:])
+
+
 # ---------------------------------------------------------------- Escape (#24)
 # WatchEscape/EscapePressed need a connection that receives signals, so they get their
 # own (a jeepney DBusRouter with a receiver thread), opened by watch_escape(True) and

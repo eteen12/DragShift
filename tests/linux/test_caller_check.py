@@ -45,7 +45,7 @@ ALL_DENIED = {"Version": "ok", **{m: DENIED for m in caller.PROTECTED}}
 GDBUS_ARGS = {"GetPointer": [], "CaptureArea": ["0", "0", "10", "10"],
               "CaptureAreaExcludingCaller": ["0", "0", "10", "10"],
               "WatchEscape": ["false"], "PlaceWindow": ["no such window", "0", "0"],
-              "GetWorkArea": ["0", "0"]}
+              "GetWorkArea": ["0", "0"], "GetOwnWindowFrame": ["no such window"]}
 CALLER_SRC = Path(caller.__file__).read_text()
 
 

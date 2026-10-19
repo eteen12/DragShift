@@ -167,12 +167,15 @@ class ToastCard(QWidget):
 
     def appear(self, rect: QRect):
         self.setGeometry(rect)
-        self.liquid.capture_at(rect)
         if IS_LINUX:
             self.setWindowTitle(TITLE.format(self.number))
             self._target = QRect(rect)
             self._place(rect.topLeft())     # before show(): placed before its first frame
+            # Without the extension Mutter puts the card anywhere: painted frost (#40).
+            if glass.exclude_from_capture(0):
+                self.liquid.capture_at(rect)
         else:
+            self.liquid.capture_at(rect)
             self.setWindowOpacity(0.0)
         self.show()
         self.liquid.excluded = glass.exclude_from_capture(int(self.winId()))
@@ -183,6 +186,11 @@ class ToastCard(QWidget):
         from . import platform_linux
         self._at = QPoint(p)
         platform_linux.place_window(self.windowTitle(), p.x(), p.y())
+
+    def stage_rect(self) -> QRect:
+        """Linux: where the card is on screen: the top-left the extension was last asked
+        for (Qt's geometry is only a guess under Wayland). LiquidBacking.refresh uses it."""
+        return QRect(self._at, self.size())
 
     def _slid(self):
         if self._at != self._target.topLeft():

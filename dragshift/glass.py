@@ -356,6 +356,8 @@ class LiquidBacking(QObject):
         if serial == self._serial:
             self.image, self.is_light = img, light
             self.changed.emit()
+            if IS_LINUX and self._refresh and self._refresh[0] == serial:
+                self._log_refresh()
 
     def moved(self):
         """Window moved/resized: refresh once it settles (only possible when excluded)."""
@@ -365,7 +367,44 @@ class LiquidBacking(QObject):
 
     def refresh(self):
         if self.excluded and self.w.isVisible():
+            if IS_LINUX:
+                self._refresh_linux()
+                return
             self.capture_at(self.w.frameGeometry())
+
+    # Linux: under Wayland frameGeometry() is only where Qt asked the window to go, not
+    # where it is. A window that knows its place on screen says so with stage_rect()
+    # (toasts: where the extension put them; glass windows: asked from the extension),
+    # None while unknown.
+    _refresh = None     # (serial, rect, start, capture ms, gc ms, source) of the last one
+
+    def _refresh_linux(self):
+        import gc
+        import time
+        locate = getattr(self.w, "stage_rect", None)
+        rect = locate() if locate is not None else self.w.frameGeometry()
+        if rect is None or rect.isEmpty():
+            return
+        t0 = time.perf_counter()
+        # A render runs Python on a pool thread; cyclic garbage holding Qt objects must
+        # not be freed there (#88). Refreshes are rare (a move or resize has settled), so
+        # collect it here, on the GUI thread, first.
+        gc.collect()
+        t1 = time.perf_counter()
+        serial = self._serial
+        self.capture_at(rect)
+        if self._serial != serial:      # a render was started
+            self._refresh = (self._serial, QRect(rect), t0, (time.perf_counter() - t1) * 1e3,
+                             (t1 - t0) * 1e3, LAST_SOURCE)
+
+    def _log_refresh(self):
+        import time
+        serial, r, t0, capture_ms, gc_ms, source = self._refresh
+        self._refresh = None
+        from .app import log_line
+        log_line(f"liquid: refreshed {r.width()}x{r.height()} at ({r.x()}, {r.y()}) from "
+                 f"{source or 'qt'}: gc {gc_ms:.1f} ms, capture {capture_ms:.1f} ms, "
+                 f"total {(time.perf_counter() - t0) * 1e3:.1f} ms")
 
 
 # ---------------------------------------------------------------- drag-image hiding
