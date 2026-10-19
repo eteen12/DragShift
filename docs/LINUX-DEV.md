@@ -211,6 +211,11 @@ files.close()                        # nautilus -q
   xcb (the Docker image), under Xwayland. With Shift held, Xwayland's bridge only offers
   `MoveAction`, but the source file stays in both cases. Qt never sees Shift in a drop
   event, because the target has no keyboard focus during a drag.
+- From the second drag of a DING process on, a desktop drag can carry no data on any
+  platform: DING's garbage collector frees an earlier drag, and GTK 3 then drops the
+  current drag's source (#102, `docs/linux/display-backend.md`). A test that needs the
+  payload calls `files.restart_desktop()` first, so its drag is the first of a fresh
+  DING.
 
 ### Display backend evidence
 

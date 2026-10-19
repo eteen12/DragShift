@@ -51,6 +51,7 @@ import locale
 import mimetypes
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -146,6 +147,50 @@ class Files:
     def put_on_desktop(self, files: dict[str, bytes | str]) -> list[Path]:
         """Create files on the DING desktop; returns their paths."""
         return _write(self.desktop_dir(), files)
+
+    def restart_desktop(self, timeout: float = 10.0) -> None:
+        """Restart the session's DING, so that the next drag from the desktop is the first
+        one in its process (#102).
+
+        DING is a GTK 3 app running in gjs. A finished drag's GdkDragContext lives on until
+        the JS garbage collector frees it. GTK 3's Wayland finalizer then clears the
+        display's current drag source if the old drag had the same source window
+        (gdk_wayland_drag_context_finalize -> gdk_wayland_selection_unset_data_source).
+        DING starts every drag from its one desktop window. So when a collection lands
+        during a later drag, GTK closes every wl_data_source.send of that drag without
+        writing: the target sees text/uri-list offered but reads nothing, at dragEnter
+        and at the drop, under Wayland and Xwayland alike. A fresh process has no old
+        drag to collect. The extension relaunches DING at once; icon_center() waits for
+        its icons."""
+        old = self._ding_pids()
+        if not old:
+            raise FilesError("DING is not running in this session")
+        for pid in old:
+            os.kill(pid, signal.SIGTERM)
+        deadline = time.monotonic() + timeout
+        while True:
+            now = self._ding_pids()
+            if now and not set(now) & set(old):
+                return
+            if time.monotonic() > deadline:
+                raise FilesError(f"DING did not restart in {timeout:.0f} s "
+                                 f"(pids before {old}, now {now})")
+            time.sleep(0.1)
+
+    def _ding_pids(self) -> list[int]:
+        """This session's DING: its private copy under the session root (session.py), so
+        the real desktop's DING (under /usr/share) never matches."""
+        script = str(self.session.root / "share" / "gnome-shell" / "extensions"
+                     / "ding@rastersoft.com" / "app" / "ding.js")
+        uid, found = os.getuid(), []
+        for entry in Path("/proc").iterdir():
+            try:
+                if (entry.name.isdigit() and entry.stat().st_uid == uid
+                        and script in _cmdline(int(entry.name)).split(" ")):
+                    found.append(int(entry.name))
+            except OSError:
+                continue
+        return found
 
     # ------------------------------------------------------------------ AT-SPI
     def atspi_available(self) -> bool:
