@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
 import traceback
@@ -86,8 +87,29 @@ def friendly_error(e: Exception) -> str:
 
 
 # ---------------------------------------------------------------- icon
+def no_tray() -> bool:
+    """Linux: True while no StatusNotifier host shows tray items (GNOME without Ubuntu's
+    AppIndicator extension, or with it disabled). Qt asks the session bus on every call."""
+    return IS_LINUX and not QSystemTrayIcon.isSystemTrayAvailable()
+
+
+def open_url(url: str) -> None:
+    if IS_LINUX:
+        # Qt hands URLs to the desktop portal, which asks "Open with…" instead of starting
+        # the default browser; xdg-open (gio open on GNOME) starts it directly.
+        try:
+            subprocess.Popen(["xdg-open", url])
+            return
+        except OSError:
+            pass
+    QDesktopServices.openUrl(QUrl(url))
+
+
 def make_tray_icon() -> QIcon:
-    """macOS menu bar wants a monochrome 'template' image; Windows gets the colour icon."""
+    """macOS menu bar wants a monochrome 'template' image; Windows and Linux get the colour
+    icon. On Linux Qt sends the .ico's 16-64 px frames as the StatusNotifierItem's
+    IconPixmap, and GNOME's AppIndicator extension draws the smallest frame of at least
+    16 × the monitor scale: 16 px at 100 %, 32 px at 200 %, each 1:1."""
     if not IS_MAC:
         return make_icon()
     pm = QPixmap(44, 44)
@@ -163,19 +185,24 @@ class DragShiftApp(QObject):
         m = QMenu()
         m.setStyleSheet(glass.QSS)
         self.act_enabled = QAction("Enabled", m, checkable=True, checked=True)
-        self.act_enabled.toggled.connect(lambda on: setattr(self.watcher, "enabled", on))
+        self.act_enabled.toggled.connect(self._set_enabled)
         m.addAction(self.act_enabled)
         m.addAction("Open a file…", self.open_dialog)
         m.addSeparator()
         m.addAction("Settings…", self.open_settings)
         m.addAction("How to use", self.show_welcome)
-        m.addAction("Tip the developer ♥", lambda: QDesktopServices.openUrl(QUrl(TIP_URL)))
+        m.addAction("Tip the developer ♥", lambda: open_url(TIP_URL))
         m.addSeparator()
         m.addAction(f"Quit {APP_NAME}", self.qapp.quit)
         self.tray_menu = m
         self.tray.setContextMenu(m)
         self.tray.activated.connect(self._tray_click)
         self.tray.show()
+        if no_tray():
+            # Qt keeps the item and registers it if a host appears later (AppIndicator
+            # enabled, another desktop's panel); until then a second launch opens Settings
+            log_line("tray: no StatusNotifierWatcher; use Files → Scripts → DragShift "
+                     "or `dragshift <file>`")
 
     def trigger_label(self) -> str:
         return dict(TRIGGERS).get(self.settings.get("trigger"), "Shift")
@@ -205,8 +232,7 @@ class DragShiftApp(QObject):
             if files:
                 self.queue_files(files)
             elif data.get("show"):
-                self.toasts.info("DragShift is already running",
-                                 f"Drag any file and press {self.trigger_label()}. It lives in the tray.")
+                self.show_requested()
             sock.disconnectFromServer()
             sock.deleteLater()
 
@@ -342,8 +368,27 @@ class DragShiftApp(QObject):
         self.toasts.new().done(report.summarize(action, srcs, outs, extra))
 
     # ------------------------------------------------------------ misc
+    def show_requested(self):
+        """DragShift was launched again while running (no files)."""
+        if no_tray():  # Linux without a StatusNotifier host: no menu to reach Settings from
+            self.open_settings()
+        else:
+            self.toasts.info("DragShift is already running",
+                             f"Drag any file and press {self.trigger_label()}. It lives in the tray.")
+
+    def running_text(self) -> str:
+        """Body of the start-up "DragShift is running" toast."""
+        text = f"Drag any file, then press {self.trigger_label()}."
+        return text + " Open DragShift again for Settings." if no_tray() else text
+
+    def _set_enabled(self, on: bool):
+        self.watcher.enabled = on
+        log_line(f"tray: trigger {'enabled' if on else 'disabled'}")
+
     def _tray_click(self, reason):
-        # macOS: a click on the menu-bar icon shows the menu; Windows: click opens a file
+        # macOS: a click on the menu-bar icon shows the menu; Windows: click opens a file.
+        # GNOME (AppIndicator): a click shows the menu, a double click sends Activate,
+        # which Qt reports as Trigger, so it opens a file as on Windows.
         if not IS_MAC and reason in (QSystemTrayIcon.DoubleClick, QSystemTrayIcon.Trigger):
             self.open_dialog()
 
@@ -563,8 +608,7 @@ def main(argv: list[str] | None = None) -> int:
     elif not app.settings.get("welcomed"):
         QTimer.singleShot(300, app.show_welcome)
     elif "--quiet" not in argv:
-        QTimer.singleShot(400, lambda: app.toasts.info(
-            "DragShift is running", f"Drag any file, then press {app.trigger_label()}."))
+        QTimer.singleShot(400, lambda: app.toasts.info("DragShift is running", app.running_text()))
     return qapp.exec()
 
 
