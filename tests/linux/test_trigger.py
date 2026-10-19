@@ -10,10 +10,12 @@ Files and from the desktop, injected through the test-helper extension.
 - A drag without Shift, and a Shift+drag with "Enabled" off in the tray, open nothing.
 - Every drag leaves the source file as it was.
 
-Where the menu lands is #34's (until then Mutter places it), so the drags look the menu
-window up and move into it. With DRAGSHIFT_EVIDENCE_DIR set, screenshots go there."""
+The menu is placed by #34: its frame must be where the app asked, centred on the
+trigger point unless clamped to the work area. The drags then move into the menu window
+beside the petals. With DRAGSHIFT_EVIDENCE_DIR set, screenshots go there."""
 import io
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -25,7 +27,7 @@ import pytest
 from PIL import Image
 
 from dragshift.app import LINUX_APP_ID
-from dragshift.radial import SIZE
+from dragshift.radial import MENU_TITLE, SIZE
 from dragshift.trigger import DRAG_THRESHOLD
 from tests.linux import inject
 from tests.linux.conftest import require_session_tools
@@ -142,8 +144,8 @@ def source(request, files):
 # ------------------------------------------------------------------ helpers
 def _menus(shell, app) -> list[dict]:
     return [w for w in shell.list_windows()
-            if w["wm_class"] == LINUX_APP_ID and w["pid"] == app["proc"].pid
-            and tuple(w["frame"][2:]) == (SIZE, SIZE)]
+            if w["title"] == MENU_TITLE and w["wm_class"] == LINUX_APP_ID
+            and w["pid"] == app["proc"].pid and tuple(w["frame"][2:]) == (SIZE, SIZE)]
 
 
 def _press_and_move(shell, start, toward, shift_first: bool) -> float:
@@ -234,7 +236,12 @@ def _open_flip_and_drop(session, shell, app, source, shift_first=False, tag=None
               f"frame {frame} (first listed at {menu['frame']}), pointer ({px}, {py}); "
               f"centre offset ({x + SIZE // 2 - px}, {y + SIZE // 2 - py})")
         assert latency <= OPEN_WITHIN
-        assert "trigger: menu at" in app["text"]()[mark:]
+        log = app["text"]()[mark:]
+        at = tuple(map(int, re.search(r"trigger: menu at \((-?\d+), (-?\d+)\)", log).groups()))
+        tl = tuple(map(int, re.search(r"menu: at \((-?\d+), (-?\d+)\)", log).groups()))
+        assert abs(x - tl[0]) <= 2 and abs(y - tl[1]) <= 2, (frame, tl)   # placed (#34)
+        if tl == (at[0] - SIZE // 2, at[1] - SIZE // 2):   # not clamped to the work area
+            assert abs(x + SIZE // 2 - at[0]) <= 4 and abs(y + SIZE // 2 - at[1]) <= 4
         if tag:
             _evidence(shell.screenshot(session.root / "tmp" / f"{tag}-shown.png"),
                       f"{tag}-shown.png")
