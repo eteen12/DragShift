@@ -255,3 +255,23 @@ uv run python -m tests.linux.session --extension /tmp/ext/dragshift@eteen12.gith
 
 The launcher returns once the shell answers on D-Bus. Extensions are enabled a moment
 later, so wait for the name before calling it.
+
+### Screen capture (`CaptureArea`)
+
+`platform_linux.capture(x, y, w, h)` returns the screen under a rect as a PIL RGB image of
+exactly w×h, or None when the extension doesn't answer. It comes from the extension's
+`CaptureArea`, which paints the rect offscreen with the drag icon hidden: Mutter's
+feedback group (Wayland drags, e.g. from Files and the desktop) and DND-type windows (X11
+drags). The paint is synchronous, so the icon is back before the next frame. The cursor
+is never in it. A rect partly off the screen is clamped by the extension and padded with
+edge pixels by the client.
+
+Almost all of the time goes into the shell's PNG encoding, so `CaptureArea` returns the
+rect as up to four horizontal PNG strips encoded in parallel. A 400×400 capture takes
+about 11-17 ms end to end (one strip took 24-42 ms). Raw pixels can't be had instead:
+GJS copies the buffer passed to `Clutter.Stage.paint_to_buffer` and `Cogl.Texture.get_data`,
+so nothing written into it reaches JavaScript.
+
+```sh
+uv run pytest tests/linux/test_capture.py -s   # incl. a real Nautilus drag; prints timings
+```
