@@ -39,3 +39,11 @@ jobs:
         run: python -m pytest -q
         env:
           QT_QPA_PLATFORM: offscreen
+
+      - name: Self-test
+        run: |
+          python -m dragshift --selftest
+          head -3 "$XDG_STATE_HOME/DragShift/log.txt"
+        env:
+          QT_QPA_PLATFORM: offscreen
+          XDG_STATE_HOME: ${{ runner.temp }}/xdg-state
