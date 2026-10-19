@@ -78,6 +78,10 @@ export function launch(quiet) {
     launcher.setenv(MANAGED_ENV, '1', true);
     const client = Meta.WaylandClient.new(global.context, launcher);
     const process = client.spawnv(global.display, quiet ? [path, '--quiet'] : [path]);
+    // The launcher still holds the app's end of the Wayland socket (take_fd) until it is
+    // garbage-collected; while it does, Mutter does not see the app go away and its
+    // windows stay on screen for seconds after it exits. Close it now.
+    launcher.close();
     const pid = Number(process.get_identifier());
     const started = {client, process, pid};
     current = started;

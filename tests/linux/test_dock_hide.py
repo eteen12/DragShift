@@ -139,6 +139,10 @@ class App:
             if p.poll() is None:
                 p.kill()
                 p.wait()
+        # A stopped app's windows go with it at once. (They stayed for seconds while the
+        # extension's SubprocessLauncher still held the app's end of the Wayland socket.)
+        assert _wait(lambda: not _ours(self.shell), 2), \
+            (_ours(self.shell), [(pid, _alive(pid)) for pid in pids])
 
 
 def _alive(pid: int) -> bool:
