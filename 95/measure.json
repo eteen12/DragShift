@@ -1,0 +1,782 @@
+{
+ "menu-flags": {
+  "windows": [
+   {
+    "title": "probe menu-flags",
+    "pid": 266355,
+    "type": "NORMAL",
+    "skip_taskbar": false,
+    "above": false,
+    "focused": true,
+    "in_tab_list": true,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": false,
+    "transient_for": null,
+    "frame": [
+     850,
+     150,
+     200,
+     200
+    ]
+   }
+  ],
+  "running": [
+   "io.github.eteen12.DragShift.desktop",
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "probe menu-flags",
+   "f"
+  ],
+  "focus": "probe menu-flags",
+  "events": [
+   {
+    "t": 36530679702,
+    "ev": "app-state",
+    "app": "window:2",
+    "state": 2
+   },
+   {
+    "t": 36530679761,
+    "ev": "created",
+    "title": null,
+    "owned": false,
+    "type": "NORMAL"
+   },
+   {
+    "t": 36530679924,
+    "ev": "app-state",
+    "app": "window:2",
+    "state": 0
+   },
+   {
+    "t": 36530680086,
+    "ev": "app-state",
+    "app": "io.github.eteen12.DragShift.desktop",
+    "state": 2
+   }
+  ]
+ },
+ "foreign-dock": {
+  "owns": false,
+  "before": {
+   "type": "NORMAL",
+   "skip": false
+  },
+  "after": {
+   "type": "NORMAL",
+   "skip": false
+  },
+  "err": null
+ },
+ "foreign-hide": {
+  "owns": false,
+  "before": {
+   "type": "NORMAL",
+   "skip": false
+  },
+  "after": {
+   "type": "NORMAL",
+   "skip": false
+  },
+  "err": null
+ },
+ "foreign-after": {
+  "windows": [
+   {
+    "title": "probe menu-flags",
+    "pid": 266355,
+    "type": "NORMAL",
+    "skip_taskbar": false,
+    "above": false,
+    "focused": true,
+    "in_tab_list": true,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": false,
+    "transient_for": null,
+    "frame": [
+     850,
+     150,
+     200,
+     200
+    ]
+   }
+  ],
+  "running": [
+   "io.github.eteen12.DragShift.desktop",
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "probe menu-flags",
+   "f"
+  ]
+ },
+ "tooltip": {
+  "windows": [],
+  "running": [
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "f"
+  ],
+  "focus": "f",
+  "events": []
+ },
+ "popup": {
+  "windows": [],
+  "running": [
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "f"
+  ],
+  "focus": "f",
+  "events": []
+ },
+ "splash": {
+  "windows": [
+   {
+    "title": "probe splash",
+    "pid": 267633,
+    "type": "NORMAL",
+    "skip_taskbar": false,
+    "above": false,
+    "focused": true,
+    "in_tab_list": true,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": false,
+    "transient_for": null,
+    "frame": [
+     850,
+     150,
+     200,
+     200
+    ]
+   }
+  ],
+  "running": [
+   "io.github.eteen12.DragShift.desktop",
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "probe splash",
+   "f"
+  ],
+  "focus": "probe splash",
+  "events": [
+   {
+    "t": 36541190636,
+    "ev": "app-state",
+    "app": "window:3",
+    "state": 2
+   },
+   {
+    "t": 36541190739,
+    "ev": "created",
+    "title": null,
+    "owned": false,
+    "type": "NORMAL"
+   },
+   {
+    "t": 36541190907,
+    "ev": "app-state",
+    "app": "window:3",
+    "state": 0
+   },
+   {
+    "t": 36541191209,
+    "ev": "app-state",
+    "app": "io.github.eteen12.DragShift.desktop",
+    "state": 2
+   }
+  ]
+ },
+ "tool-with-parent": {
+  "windows": [
+   {
+    "title": "probe-parent",
+    "pid": 268696,
+    "type": "NORMAL",
+    "skip_taskbar": false,
+    "above": false,
+    "focused": false,
+    "in_tab_list": true,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": false,
+    "transient_for": null,
+    "frame": [
+     850,
+     150,
+     202,
+     240
+    ]
+   },
+   {
+    "title": "probe tool-with-parent",
+    "pid": 268696,
+    "type": "NORMAL",
+    "skip_taskbar": false,
+    "above": false,
+    "focused": true,
+    "in_tab_list": true,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": false,
+    "transient_for": "probe-parent",
+    "frame": [
+     851,
+     163,
+     200,
+     200
+    ]
+   }
+  ],
+  "running": [
+   "io.github.eteen12.DragShift.desktop",
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "probe tool-with-parent",
+   "probe-parent",
+   "f"
+  ],
+  "focus": "probe tool-with-parent",
+  "events": [
+   {
+    "t": 36544624545,
+    "ev": "app-state",
+    "app": "window:4",
+    "state": 2
+   },
+   {
+    "t": 36544624667,
+    "ev": "created",
+    "title": null,
+    "owned": false,
+    "type": "NORMAL"
+   },
+   {
+    "t": 36544625147,
+    "ev": "app-state",
+    "app": "window:4",
+    "state": 0
+   },
+   {
+    "t": 36544625317,
+    "ev": "app-state",
+    "app": "io.github.eteen12.DragShift.desktop",
+    "state": 2
+   },
+   {
+    "t": 36545405570,
+    "ev": "created",
+    "title": null,
+    "owned": false,
+    "type": "NORMAL"
+   }
+  ]
+ },
+ "modal-dialog-with-parent": {
+  "windows": [
+   {
+    "title": "probe-parent",
+    "pid": 269015,
+    "type": "NORMAL",
+    "skip_taskbar": false,
+    "above": false,
+    "focused": false,
+    "in_tab_list": true,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": false,
+    "transient_for": null,
+    "frame": [
+     850,
+     150,
+     202,
+     240
+    ]
+   },
+   {
+    "title": "probe modal-dialog-with-parent",
+    "pid": 269015,
+    "type": "NORMAL",
+    "skip_taskbar": false,
+    "above": false,
+    "focused": true,
+    "in_tab_list": true,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": false,
+    "transient_for": "probe-parent",
+    "frame": [
+     851,
+     163,
+     200,
+     200
+    ]
+   }
+  ],
+  "running": [
+   "io.github.eteen12.DragShift.desktop",
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "probe modal-dialog-with-parent",
+   "probe-parent",
+   "f"
+  ],
+  "focus": "probe modal-dialog-with-parent",
+  "events": [
+   {
+    "t": 36548049775,
+    "ev": "app-state",
+    "app": "window:6",
+    "state": 2
+   },
+   {
+    "t": 36548049858,
+    "ev": "created",
+    "title": null,
+    "owned": false,
+    "type": "NORMAL"
+   },
+   {
+    "t": 36548050080,
+    "ev": "app-state",
+    "app": "window:6",
+    "state": 0
+   },
+   {
+    "t": 36548050182,
+    "ev": "app-state",
+    "app": "io.github.eteen12.DragShift.desktop",
+    "state": 2
+   },
+   {
+    "t": 36548820911,
+    "ev": "created",
+    "title": null,
+    "owned": false,
+    "type": "NORMAL"
+   }
+  ]
+ },
+ "popup-with-parent": {
+  "windows": [
+   {
+    "title": "probe-parent",
+    "pid": 269285,
+    "type": "NORMAL",
+    "skip_taskbar": false,
+    "above": false,
+    "focused": true,
+    "in_tab_list": true,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": false,
+    "transient_for": null,
+    "frame": [
+     850,
+     150,
+     202,
+     240
+    ]
+   }
+  ],
+  "running": [
+   "io.github.eteen12.DragShift.desktop",
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "probe-parent",
+   "f"
+  ],
+  "focus": "probe-parent",
+  "events": [
+   {
+    "t": 36551475709,
+    "ev": "app-state",
+    "app": "window:8",
+    "state": 2
+   },
+   {
+    "t": 36551475839,
+    "ev": "created",
+    "title": null,
+    "owned": false,
+    "type": "NORMAL"
+   },
+   {
+    "t": 36551476120,
+    "ev": "app-state",
+    "app": "window:8",
+    "state": 0
+   },
+   {
+    "t": 36551476239,
+    "ev": "app-state",
+    "app": "io.github.eteen12.DragShift.desktop",
+    "state": 2
+   }
+  ]
+ },
+ "spawn-none": {
+  "windows": [
+   {
+    "title": "probe menu-flags",
+    "pid": 265573,
+    "type": "NORMAL",
+    "skip_taskbar": false,
+    "above": false,
+    "focused": true,
+    "in_tab_list": true,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": true,
+    "transient_for": null,
+    "frame": [
+     850,
+     150,
+     200,
+     200
+    ]
+   }
+  ],
+  "running": [
+   "io.github.eteen12.DragShift.desktop",
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "probe menu-flags",
+   "f"
+  ],
+  "focus": "probe menu-flags",
+  "events": [
+   {
+    "t": 36554916299,
+    "ev": "app-state",
+    "app": "window:9",
+    "state": 2
+   },
+   {
+    "t": 36554916392,
+    "ev": "created",
+    "title": null,
+    "owned": true,
+    "type": "NORMAL"
+   },
+   {
+    "t": 36554916637,
+    "ev": "app-state",
+    "app": "window:9",
+    "state": 0
+   },
+   {
+    "t": 36554916757,
+    "ev": "app-state",
+    "app": "io.github.eteen12.DragShift.desktop",
+    "state": 2
+   },
+   {
+    "t": 36554924552,
+    "ev": "shown",
+    "title": "probe menu-flags",
+    "type": "NORMAL",
+    "focused": true
+   }
+  ]
+ },
+ "spawn-hide-created": {
+  "windows": [
+   {
+    "title": "probe menu-flags",
+    "pid": 265573,
+    "type": "NORMAL",
+    "skip_taskbar": true,
+    "above": false,
+    "focused": true,
+    "in_tab_list": false,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": true,
+    "transient_for": null,
+    "frame": [
+     850,
+     150,
+     200,
+     200
+    ]
+   }
+  ],
+  "running": [
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "f"
+  ],
+  "focus": "probe menu-flags",
+  "events": [
+   {
+    "t": 36559389816,
+    "ev": "app-state",
+    "app": "window:10",
+    "state": 2
+   },
+   {
+    "t": 36559389934,
+    "ev": "created",
+    "title": null,
+    "owned": true,
+    "type": "NORMAL"
+   },
+   {
+    "t": 36559390047,
+    "ev": "app-state",
+    "app": "window:10",
+    "state": 0
+   },
+   {
+    "t": 36559390066,
+    "ev": "hide@created",
+    "title": null
+   },
+   {
+    "t": 36559394670,
+    "ev": "shown",
+    "title": "probe menu-flags",
+    "type": "NORMAL",
+    "focused": true
+   }
+  ]
+ },
+ "spawn-dock-created": {
+  "windows": [
+   {
+    "title": "probe menu-flags",
+    "pid": 265573,
+    "type": "NORMAL",
+    "skip_taskbar": true,
+    "above": false,
+    "focused": false,
+    "in_tab_list": false,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": false,
+    "transient_for": null,
+    "frame": [
+     850,
+     150,
+     200,
+     200
+    ]
+   },
+   {
+    "title": "probe menu-flags",
+    "pid": 265573,
+    "type": "DOCK",
+    "skip_taskbar": true,
+    "above": false,
+    "focused": false,
+    "in_tab_list": false,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": true,
+    "transient_for": null,
+    "frame": [
+     0,
+     0,
+     200,
+     200
+    ]
+   }
+  ],
+  "running": [
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "f"
+  ],
+  "focus": "f",
+  "events": [
+   {
+    "t": 36563874072,
+    "ev": "app-state",
+    "app": "window:11",
+    "state": 2
+   },
+   {
+    "t": 36563874220,
+    "ev": "created",
+    "title": null,
+    "owned": true,
+    "type": "NORMAL"
+   },
+   {
+    "t": 36563874368,
+    "ev": "app-state",
+    "app": "window:11",
+    "state": 0
+   },
+   {
+    "t": 36563874404,
+    "ev": "make_dock@created",
+    "title": null
+   },
+   {
+    "t": 36563877955,
+    "ev": "shown",
+    "title": "probe menu-flags",
+    "type": "DOCK",
+    "focused": false
+   }
+  ]
+ },
+ "spawn-dock-title": {
+  "windows": [
+   {
+    "title": "probe menu-flags",
+    "pid": 265573,
+    "type": "DOCK",
+    "skip_taskbar": true,
+    "above": false,
+    "focused": false,
+    "in_tab_list": false,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": true,
+    "transient_for": null,
+    "frame": [
+     0,
+     0,
+     200,
+     200
+    ]
+   }
+  ],
+  "running": [
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "f"
+  ],
+  "focus": "f",
+  "events": [
+   {
+    "t": 36568339115,
+    "ev": "app-state",
+    "app": "window:12",
+    "state": 2
+   },
+   {
+    "t": 36568339349,
+    "ev": "created",
+    "title": null,
+    "owned": true,
+    "type": "NORMAL"
+   },
+   {
+    "t": 36568339606,
+    "ev": "app-state",
+    "app": "window:12",
+    "state": 0
+   },
+   {
+    "t": 36568339658,
+    "ev": "make_dock@title",
+    "title": "probe menu-flags"
+   },
+   {
+    "t": 36568346951,
+    "ev": "shown",
+    "title": "probe menu-flags",
+    "type": "DOCK",
+    "focused": false
+   }
+  ]
+ },
+ "spawn-dock-shown": {
+  "windows": [
+   {
+    "title": "probe menu-flags",
+    "pid": 265573,
+    "type": "DOCK",
+    "skip_taskbar": true,
+    "above": false,
+    "focused": false,
+    "in_tab_list": false,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": false,
+    "transient_for": null,
+    "frame": [
+     0,
+     0,
+     200,
+     200
+    ]
+   },
+   {
+    "title": "probe menu-flags",
+    "pid": 265573,
+    "type": "DOCK",
+    "skip_taskbar": true,
+    "above": false,
+    "focused": true,
+    "in_tab_list": false,
+    "app": "io.github.eteen12.DragShift.desktop",
+    "owned": true,
+    "transient_for": null,
+    "frame": [
+     850,
+     150,
+     200,
+     200
+    ]
+   }
+  ],
+  "running": [
+   "org.gnome.Nautilus.desktop"
+  ],
+  "tab": [
+   "f"
+  ],
+  "focus": "probe menu-flags",
+  "events": [
+   {
+    "t": 36573022415,
+    "ev": "app-state",
+    "app": "window:13",
+    "state": 2
+   },
+   {
+    "t": 36573022563,
+    "ev": "created",
+    "title": null,
+    "owned": true,
+    "type": "NORMAL"
+   },
+   {
+    "t": 36573022853,
+    "ev": "app-state",
+    "app": "window:13",
+    "state": 0
+   },
+   {
+    "t": 36573022980,
+    "ev": "app-state",
+    "app": "io.github.eteen12.DragShift.desktop",
+    "state": 2
+   },
+   {
+    "t": 36573031957,
+    "ev": "app-state",
+    "app": "io.github.eteen12.DragShift.desktop",
+    "state": 0
+   },
+   {
+    "t": 36573033726,
+    "ev": "make_dock@shown",
+    "title": "probe menu-flags"
+   },
+   {
+    "t": 36573033732,
+    "ev": "shown",
+    "title": "probe menu-flags",
+    "type": "DOCK",
+    "focused": true
+   }
+  ]
+ },
+ "shell_pid": 265573
+}

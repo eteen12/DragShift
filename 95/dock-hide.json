@@ -1,0 +1,44 @@
+{
+ "managed_pid": 595424,
+ "running": [
+  "org.gnome.Nautilus.desktop"
+ ],
+ "focused": [
+  "pics-38793028873204"
+ ],
+ "alt_tab": [
+  "pics-38793028873204"
+ ],
+ "windows": {
+  "DragShift toast 1": {
+   "window_type": "dock",
+   "in_tab_list": false,
+   "skip_taskbar": true,
+   "above": true,
+   "focused": false,
+   "frame": [
+    1201,
+    777,
+    380,
+    104
+   ],
+   "app": "window:2",
+   "pid": 594516
+  },
+  "DragShift menu": {
+   "window_type": "dock",
+   "in_tab_list": false,
+   "skip_taskbar": true,
+   "above": true,
+   "focused": false,
+   "frame": [
+    900,
+    100,
+    400,
+    400
+   ],
+   "app": "window:3",
+   "pid": 594516
+  }
+ }
+}
