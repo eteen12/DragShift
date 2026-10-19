@@ -64,6 +64,12 @@ const IFACE = `
       <arg type="i" direction="out" name="y"/>
       <arg type="u" direction="out" name="mask"/>
     </method>
+    <method name="GetWorkArea">
+      <arg type="i" direction="in" name="x"/>
+      <arg type="i" direction="in" name="y"/>
+      <arg type="(iiii)" direction="out" name="monitor"/>
+      <arg type="(iiii)" direction="out" name="work_area"/>
+    </method>
     <method name="MovePointer">
       <arg type="i" direction="in" name="x"/>
       <arg type="i" direction="in" name="y"/>
@@ -314,6 +320,23 @@ class Helper {
             w.unmaximize(Meta.MaximizeFlags.BOTH);
         w.move_resize_frame(false, x, y, width, height);
         return true;
+    }
+
+    // The monitor that contains (x, y) (else the primary one) and Mutter's work area of
+    // it on the active workspace (#42: toasts must stay inside it), stage pixels.
+    GetWorkArea(x, y) {
+        const display = global.display;
+        let index = -1;
+        for (let i = 0; i < display.get_n_monitors(); i++) {
+            const m = display.get_monitor_geometry(i);
+            if (x >= m.x && x < m.x + m.width && y >= m.y && y < m.y + m.height)
+                index = i;
+        }
+        if (index < 0)
+            index = display.get_primary_monitor();
+        const m = display.get_monitor_geometry(index);
+        const a = global.workspace_manager.get_active_workspace().get_work_area_for_monitor(index);
+        return [[m.x, m.y, m.width, m.height], [a.x, a.y, a.width, a.height]];
     }
 
     GetPointer() {
