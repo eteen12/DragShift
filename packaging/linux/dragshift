@@ -1,0 +1,22 @@
+#!/bin/sh
+# DragShift launcher, installed as ~/.local/bin/dragshift by install-linux.sh (#66).
+#
+#   dragshift [FILE...]   hand the files to the running DragShift, which opens its menu,
+#                         or start DragShift with them. Files' Open With runs this too
+#                         (io.github.eteen12.DragShift.desktop: Exec=dragshift %F).
+#
+# The hand-off happens in dragshift/handoff.py before Qt is imported: a few lines of JSON
+# over the unix socket $XDG_RUNTIME_DIR/DragShift.
+#
+# VENV and SRC default to the installer's layout; the installer may write absolute paths
+# here instead. Keep the last line's form: the GNOME Shell extension only answers a
+# process whose command line is `<venv>/bin/python -m dragshift ...` (#93), so the
+# script must exec Python with -m dragshift, never `python run.py` or `python -c`.
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/dragshift"
+VENV="${DRAGSHIFT_VENV:-$DATA/venv}"
+SRC="${DRAGSHIFT_SRC:-$DATA/src}"
+if [ -d "$SRC/dragshift" ]; then
+    PYTHONPATH="$SRC${PYTHONPATH:+:$PYTHONPATH}"
+    export PYTHONPATH
+fi
+exec "$VENV/bin/python" -m dragshift "$@"

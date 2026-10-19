@@ -182,7 +182,10 @@ class DragShiftApp(QObject):
         self._pending_timer = QTimer(self, singleShot=True, interval=280, timeout=self._flush_pending)
         self.server = QLocalServer(self)
         QLocalServer.removeServer(IPC_NAME)
-        self.server.listen(IPC_NAME)
+        listening = self.server.listen(IPC_NAME)
+        if IS_LINUX:  # $XDG_RUNTIME_DIR/DragShift (handoff.py)
+            log_line(f"ipc: listening at {self.server.fullServerName()}" if listening else
+                     f"ipc: cannot listen at {IPC_NAME}: {self.server.errorString()}")
         self.server.newConnection.connect(self._ipc)
 
         self.tray = QSystemTrayIcon(make_tray_icon(), self)
@@ -406,6 +409,7 @@ class DragShiftApp(QObject):
         if IS_LINUX:
             # no activateWindow(): on Wayland it can only ask for attention, and the menu
             # never takes the focus anyway (#10, #36)
+            log_line(f"click menu: {len(files)} file(s)")
             self.menu.popup(linux_click_pos(), files)
             return
         g = (QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()).availableGeometry()

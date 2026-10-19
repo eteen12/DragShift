@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from dragshift import toasts
+from dragshift import handoff, toasts
 from tests.linux.conftest import require_session_tools
 from tests.linux.files import Files
 from tests.linux.session import Session
@@ -105,7 +105,7 @@ def _start_app(s) -> subprocess.Popen:
     out = open(s.root / "tmp" / "dragshift.out", "w")
     proc = s.popen([sys.executable, "-m", "dragshift", "--quiet"], cwd=ROOT,
                    env={"PYTHONPATH": str(ROOT)}, stdout=out, stderr=subprocess.STDOUT)
-    sock = s.root / "tmp" / ("DragShift-" + (os.environ.get("USER") or "user"))
+    sock = Path(handoff.socket_path(s.env()))      # the session's XDG_RUNTIME_DIR
     assert _wait(sock.exists, 20, 0.1), (s.root / "tmp" / "dragshift.out").read_text()
     return proc
 
