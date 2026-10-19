@@ -105,12 +105,39 @@ def test_open_and_show_use_the_first_output(card, monkeypatch, tmp_path):
     assert calls == [("open", outs[0]), ("reveal", outs[0])]
 
 
-def test_open_hands_the_file_to_the_desktop(qapp, monkeypatch, tmp_path):
+@pytest.mark.parametrize("platform", ["win32", "darwin"])
+def test_open_uses_qt_on_windows_and_macos(qapp, monkeypatch, tmp_path, platform):
     from dragshift import toasts
-    urls = []
+    urls, spawned = [], []
+    monkeypatch.setattr(toasts.sys, "platform", platform)
+    monkeypatch.setattr(toasts.subprocess, "Popen", lambda cmd, *a, **k: spawned.append(cmd))
     monkeypatch.setattr(toasts.QDesktopServices, "openUrl", staticmethod(urls.append))
     toasts.open_file(tmp_path / "a b.png")
-    assert [u.toLocalFile() for u in urls] == [str(tmp_path / "a b.png")]
+    assert [u.toLocalFile() for u in urls] == [str(tmp_path / "a b.png")] and spawned == []
+
+
+@linux_only
+def test_open_starts_the_default_app_with_xdg_open(qapp, monkeypatch, tmp_path):
+    """Not Qt: Qt goes through the desktop portal, which shows an "Open with" chooser."""
+    from dragshift import toasts
+    urls, spawned = [], []
+    monkeypatch.setattr(toasts.subprocess, "Popen", lambda cmd, *a, **k: spawned.append(cmd))
+    monkeypatch.setattr(toasts.QDesktopServices, "openUrl", staticmethod(urls.append))
+    toasts.open_file(tmp_path / "a b.png")
+    assert spawned == [["xdg-open", str(tmp_path / "a b.png")]] and urls == []
+
+
+@linux_only
+def test_open_falls_back_to_qt_without_xdg_open(qapp, monkeypatch, tmp_path):
+    from dragshift import toasts
+    urls = []
+
+    def missing(cmd, *a, **k):
+        raise FileNotFoundError(cmd[0])
+    monkeypatch.setattr(toasts.subprocess, "Popen", missing)
+    monkeypatch.setattr(toasts.QDesktopServices, "openUrl", staticmethod(urls.append))
+    toasts.open_file(tmp_path / "a.png")
+    assert [u.toLocalFile() for u in urls] == [str(tmp_path / "a.png")]
 
 
 # ---------------------------------------------------------------- reveal over D-Bus

@@ -40,6 +40,14 @@ def reveal(path: str | Path):
 
 
 def open_file(path: str | Path):
+    if sys.platform.startswith("linux"):
+        # Qt hands this to the desktop portal, which asks "Open with…" instead of starting
+        # the default app. xdg-open (gio open on GNOME) starts the default app directly.
+        try:
+            subprocess.Popen(["xdg-open", str(path)])
+            return
+        except OSError:
+            pass
     QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
 
