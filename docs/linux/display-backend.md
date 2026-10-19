@@ -145,11 +145,11 @@ Option (c): native Wayland, placed by the extension.
   measured here.
 - **Known wart:** while the menu or a toast is visible, the dock shows a DragShift app
   icon and Alt+Tab lists the window. (c′) removes that but changes who starts the app.
-  Recorded as a follow-up.
+  Recorded as follow-up #95.
 
 ## Follow-ups
 
-- Keep DragShift's menu and toasts out of the dock and Alt+Tab. This uses (c′): the
+- #95: keep DragShift's menu and toasts out of the dock and Alt+Tab. This uses (c′): the
   extension launches the app as a `Meta.WaylandClient`, and `make_dock` or
   `hide_from_window_list` applies to its menu and toast windows. It affects autostart
   (#47) and the CLI hand-off (#50).
