@@ -28,11 +28,24 @@ def qapp():
 
 @pytest.fixture
 def card(qapp):
+    """A result card. Its glass backdrop renders on a QThreadPool thread. Free any garbage
+    here first, so that thread's GC finds no Qt object to destroy (see conftest), wait for the
+    render and deliver it, so no worker runs during the test, and delete the card on this
+    thread afterwards instead of leaving it to the GC."""
+    import gc
+    from PySide6.QtCore import QCoreApplication, QEvent, QThreadPool
+    from shiboken6 import isValid
     from dragshift import toasts
-    c = toasts.ToastStack().new()
+    stack = toasts.ToastStack()
+    c = stack.new()
+    gc.collect()
+    QThreadPool.globalInstance().waitForDone()
+    qapp.processEvents()
     yield c
-    c.life.stop()
-    c.deleteLater()
+    if isValid(c):
+        c.dismiss()                    # stops its timers, leaves the stack, deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert not isValid(c) and stack.cards == []
 
 
 @pytest.fixture

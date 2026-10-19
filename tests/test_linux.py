@@ -4,8 +4,10 @@ The module only holds fallbacks so far. These tests check behaviour through the 
 public functions: what Linux does with the fallbacks, what it does once the module's bodies
 answer (fakes patched in), that nothing imports the module off Linux, and the trigger state
 machine on every platform."""
+import gc
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -130,7 +132,10 @@ def test_tick_state_machine(watcher, monkeypatch):
     tick((140, 100), True, True)               # key tapped again: other ring
     assert watcher.events[-1] == ("toggle",)
     tick((140, 100), False, False)             # drop
-    QTest.qWait(200)                           # hide_menu is delayed 120 ms for the drop
+    assert watcher.events[-1] == ("toggle",)   # hide_menu is delayed 120 ms for the drop
+    deadline = time.monotonic() + 10           # wait for it, however slow the CI runner is
+    while len(watcher.events) < 3 and time.monotonic() < deadline:
+        QTest.qWait(10)
     assert watcher.events == [("show", 115, 100), ("toggle",), ("hide",)]
 
 
@@ -222,6 +227,7 @@ def _popup(radial, at):
     from PySide6.QtCore import QPoint, QThreadPool
     menu = radial.RadialMenu(lambda p: {}, lambda p: "")
     menu.popup(QPoint(*at))
+    gc.collect()      # garbage goes here, not in the render thread's GC (see conftest)
     QThreadPool.globalInstance().waitForDone(10000)
     menu.hide()
     return menu, (at[0] - menu.pos().x(), at[1] - menu.pos().y())

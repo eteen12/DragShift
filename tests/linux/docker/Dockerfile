@@ -10,7 +10,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Session: shell, Xwayland, Files, Ubuntu's default extensions, AT-SPI, software GL.
 # yaru-theme-gnome-shell holds the theme --mode=ubuntu loads (the shell dies at boot without
 # it); python3-gi runs tests/linux/fake_systemd.py; dconf-cli seeds settings before boot;
-# x11-utils gives xdpyinfo. The second group is the apt list from docs/LINUX-DEV.md.
+# x11-utils gives xdpyinfo; xdg-utils gives xdg-open (the toast's Open) and xdg-mime, and
+# xdg-open needs `file` to find a file's type in the session ("ubuntu:GNOME" is "generic" to
+# it). The second group is the apt list from docs/LINUX-DEV.md.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       gnome-shell mutter xwayland nautilus dbus dbus-x11 \
@@ -18,7 +20,7 @@ RUN apt-get update \
       gnome-shell-extension-appindicator yaru-theme-gnome-shell \
       at-spi2-core gir1.2-atspi-2.0 python3-gi \
       libgl1-mesa-dri mesa-utils fonts-ubuntu fonts-noto-core libxcb-cursor0 \
-      dconf-cli x11-utils ca-certificates curl \
+      dconf-cli x11-utils xdg-utils file ca-certificates curl \
       python3-venv libgl1 libegl1 libfontconfig1 libfreetype6 libglib2.0-0t64 \
       libdbus-1-3 libx11-6 libxkbcommon0 libgssapi-krb5-2 \
       libx11-xcb1 libxcb1 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \

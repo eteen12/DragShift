@@ -6,9 +6,12 @@
   there instead of ~/.config/DragShift, ~/.local/state, ~/.local/share or ~/.cache.
 - Hides an installed LibreOffice from DOCX -> PDF, so those tests cover the built-in
   renderer; only tests/test_soffice.py uses a fake or (marked `libreoffice`) the real one.
+- Frees each test's leftover Qt objects on the main thread and lets its background renders
+  finish before the next test starts (see _qt_leftovers_freed_on_the_main_thread).
 
 This runs when pytest loads the conftest, before any test module (or Qt) is imported.
 """
+import gc
 import os
 import shutil
 import sys
@@ -48,6 +51,22 @@ def _no_real_session_bus(request, monkeypatch):
     if not any(request.node.get_closest_marker(m) for m in ("gnome", "libreoffice")):
         monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS",
                            "unix:path=" + str(_XDG_ROOT / "no-session-bus"))
+
+
+@pytest.fixture(autouse=True)
+def _qt_leftovers_freed_on_the_main_thread():
+    """Qt objects must be destroyed on the GUI thread. Widgets a test leaves behind are often
+    only held by reference cycles, so Python's cyclic GC frees them, in whichever thread
+    allocates next. A liquid-glass render (glass._LiquidJob) runs Python on a QThreadPool
+    thread, so it could be that thread: it then deleted those widgets while the main thread
+    was deleting Qt objects too, and the heap broke (Windows "Fatal Python error: Aborted",
+    macOS segfaults; #85). So after each test, collect its garbage here, then let its renders
+    finish, so none of them runs into the next test."""
+    yield
+    gc.collect()
+    qtcore = sys.modules.get("PySide6.QtCore")
+    if qtcore is not None:
+        qtcore.QThreadPool.globalInstance().waitForDone()
 
 
 def pytest_unconfigure(config):
