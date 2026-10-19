@@ -165,7 +165,8 @@ class DragShiftApp(QObject):
         # the watcher only manages menus it opened (drag mode); click-mode menus (tray, right-click,
         # Send To) must not be closed just because no mouse button is held
         self.watcher = DragShiftWatcher(lambda: self.menu.isVisible() and not self.menu.click_mode,
-                                        lambda: self.menu.got_drag, self)
+                                        lambda: self.menu.got_drag, self,
+                                        self.menu.drag_cancelled_since)
         self.watcher.set_key(self.settings.get("trigger"))
         self.watcher.show_menu.connect(lambda pos: self.menu.popup(pos))
         self.watcher.toggle_ring.connect(self.menu.next_ring)
