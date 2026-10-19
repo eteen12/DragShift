@@ -35,13 +35,14 @@ MONITORS = ((1600, 900), (800, 600))    # the second one sits right of the first
 
 
 def _reset_client():
-    """Close the client's connection and forget its availability and back-off."""
-    if lx._bus is not None:
-        try:
-            lx._bus.close()
-        except Exception:
-            pass
-    lx._bus = None
+    """Close the client's connections and forget its availability and back-off."""
+    for conn in (lx._MAIN, lx._WORKER):
+        if conn.bus is not None:
+            try:
+                conn.bus.close()
+            except Exception:
+                pass
+        conn.bus = None
     lx._answered, lx._retry_at, lx._backoff = False, 0.0, 0.0
 
 
