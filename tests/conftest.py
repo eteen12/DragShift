@@ -30,10 +30,6 @@ for _var, _sub in (("XDG_CONFIG_HOME", "config"), ("XDG_STATE_HOME", "state"),
     os.environ[_var] = str(_XDG_ROOT / _sub)
 
 
-def pytest_configure(config):
-    config.addinivalue_line("markers", "libreoffice: runs the installed LibreOffice (skipped when missing)")
-
-
 @pytest.fixture(autouse=True)
 def _no_real_libreoffice(request, monkeypatch):
     if not sys.platform.startswith("linux") or request.module.__name__.endswith("test_soffice"):
@@ -44,3 +40,10 @@ def _no_real_libreoffice(request, monkeypatch):
 
 def pytest_unconfigure(config):
     shutil.rmtree(_XDG_ROOT, ignore_errors=True)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "gnome: needs the isolated headless GNOME Shell session "
+                   "(tests/linux/session.py); skipped when gnome-shell is missing")
+    config.addinivalue_line("markers", "libreoffice: runs the installed LibreOffice (skipped when missing)")

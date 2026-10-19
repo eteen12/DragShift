@@ -7,7 +7,7 @@ import io
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, features
 
 from .util import UserError, sibling
 
@@ -17,6 +17,9 @@ try:  # HEIC / HEIF support
     HEIF_OK = True
 except Exception:  # pragma: no cover
     HEIF_OK = False
+
+# AVIF comes from the libavif bundled in Pillow >= 11.2 wheels (pillow_heif >= 1.0 has no AVIF).
+AVIF_OK = features.check("avif")
 
 try:
     import pymupdf as fitz
@@ -421,6 +424,8 @@ def targets_for(cat: str, src_ext: str) -> list[str]:
         t = [x for x in IMAGE_TARGETS if x != cur]
         if not HEIF_OK:
             t = [x for x in t if x != "HEIC"]
+        if not AVIF_OK:
+            t = [x for x in t if x != "AVIF"]
         return t
     return {"pdf": PDF_TARGETS, "docx": DOCX_TARGETS, "text": TEXT_TARGETS}.get(cat, [])
 
